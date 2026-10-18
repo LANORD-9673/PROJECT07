@@ -1,0 +1,11 @@
+NEXUS 2.2 — gói Streamlit
+
+Đã kiểm chứng trên Python 3.12 và Streamlit 1.65.0:
+- 110 kiểm thử backend đạt, gồm mã hóa AES-GCM, khôi phục file, khóa thiếu/sai và workflow dữ liệu.
+- Streamlit AppTest: trạng thái khóa thiếu hiển thị hướng dẫn; upload CSV với khóa hợp lệ; bấm “Mã hóa file đã chọn”; file .nexus.enc xuất hiện để tải: đạt.
+- Streamlit AppTest không phát sinh exception trong cả hai trạng thái khóa.
+- Một cảnh báo deprecation Starlette/httpx của môi trường test không làm test thất bại.
+
+Chưa deploy thay ứng dụng Community Cloud của người dùng. Chưa gọi Gemini live bằng tài khoản người dùng. Batch Windows chưa chạy trực tiếp trên máy người dùng.
+
+Bản này chỉ chạy Streamlit; không có frontend React hoặc yêu cầu Node/Docker.

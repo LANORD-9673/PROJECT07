@@ -52,6 +52,22 @@ def test_missing_master_does_not_write(tmp_path, monkeypatch):
     assert not (tmp_path / 'never-created').exists()
 
 
+def test_master_key_status_never_exposes_key(monkeypatch):
+    monkeypatch.delenv('PROJECT07_VAULT_MASTER_KEY', raising=False)
+    ready, message = privacy.master_key_status()
+    assert not ready and 'PROJECT07_VAULT_MASTER_KEY' in message
+    secret = base64.b64encode(os.urandom(32)).decode()
+    monkeypatch.setenv('PROJECT07_VAULT_MASTER_KEY', secret)
+    ready, message = privacy.master_key_status()
+    assert ready and 'hợp lệ' in message and secret not in message
+
+
+def test_master_key_status_rejects_invalid_key(monkeypatch):
+    monkeypatch.setenv('PROJECT07_VAULT_MASTER_KEY', 'not-a-key')
+    ready, message = privacy.master_key_status()
+    assert not ready and 'Base64' in message and 'not-a-key' not in message
+
+
 def test_unknown_columns_removed_and_personal_columns_tokenized(vault):
     frame = pd.DataFrame({'full_name':['Secret Person'], 'phone':['0901234567'],
                           'amount_vnd':['100000'], 'note':['private unstructured data']})

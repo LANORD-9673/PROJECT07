@@ -114,6 +114,11 @@ elif page == 'Vai trò & cấu hình':
     st.write('Provider: **Gemini API — Google AI Studio**')
     st.write('API key: ' + ('đã cấu hình' if os.environ.get('GEMINI_API_KEY', '').strip() else 'chưa cấu hình GEMINI_API_KEY'))
     st.write('Model: ' + os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash'))
+    from services.privacy import master_key_status
+    vault_ready, vault_message = master_key_status()
+    st.write('Khóa mã hóa vault: ' + ('đã sẵn sàng' if vault_ready else 'chưa sẵn sàng'))
+    if not vault_ready:
+        st.caption(vault_message)
     st.caption('Chỉ kiểm tra cấu hình; chưa chứng minh kết nối hoặc chất lượng model. API key không hiển thị trên giao diện.')
     if st.button('Kiểm tra key và danh sách model', key='gemini_check'):
         try:
@@ -134,9 +139,9 @@ elif page == 'Vai trò & cấu hình':
     st.info('Nhập GEMINI_API_KEY trong Streamlit Secrets hoặc biến môi trường ở PyCharm. Không cần Ollama chạy trên laptop. Model lỗi sẽ dừng bước tương ứng; không thay thế bằng kết quả giả.')
 
 elif page == 'Bảo vệ dữ liệu':
-    from services.privacy import protect_file, read_table, suggest_columns, pseudonymize, PrivacyError
+    from services.privacy import protect_file, read_table, suggest_columns, pseudonymize, PrivacyError, master_key_status
     st.subheader('Bảo vệ dữ liệu trước khi phân tích')
-    st.info('File gốc được mã hóa AES-256-GCM ngay sau khi upload, nếu chủ app đã cấu hình khóa chủ. Bản mã giả giữ cấu trúc nguồn và cần auditor review trước khi tải hoặc import.')
+    st.info('File gốc được mã hóa AES-256-GCM khi bạn bấm nút mã hóa. Bản mã giả giữ cấu trúc nguồn và cần auditor review trước khi tải hoặc import.')
     st.caption('Mã giả không phải dữ liệu ẩn danh tuyệt đối. Cột KEEP còn là dữ liệu có thể đọc được. Chỉ gửi bản đã review vào quy trình kiểm toán.')
     sample_path = ROOT / 'demo' / 'loans_10.csv'
     if sample_path.is_file():
@@ -149,85 +154,94 @@ elif page == 'Bảo vệ dữ liệu':
         st.session_state['upload_generation']=st.session_state.get('upload_generation',0)+1
         st.rerun()
     file = st.file_uploader('Chọn file bất kỳ để mã hóa — tối đa 10 MB', key='private_upload_'+str(st.session_state.get('upload_generation',0)))
-    if not os.environ.get('PROJECT07_VAULT_MASTER_KEY', '').strip():
-        st.warning('Chủ app cần cấu hình PROJECT07_VAULT_MASTER_KEY trong Secrets trước khi dùng vault. Xem HUONG_DAN_BAO_VE_DU_LIEU.md.')
-    if file and os.environ.get('PROJECT07_VAULT_MASTER_KEY', '').strip():
+    vault_ready, vault_message = master_key_status()
+    if not vault_ready:
+        st.error('Chưa thể mã hóa vì khóa vault chưa được cấu hình đúng.')
+        st.caption(vault_message)
+        st.markdown('Chủ ứng dụng: tạo khóa trên máy riêng bằng `python scripts/generate_vault_key.py`, sau đó thêm vào **Streamlit → App settings → Secrets**. Giữ nguyên khóa cũ nếu vault đã có file; không đưa khóa lên GitHub.')
+        st.code('PROJECT07_VAULT_MASTER_KEY = "DAN_KHOA_BASE64_32_BYTE_VAO_DAY"', language='toml')
+        st.caption('Sau khi lưu Secrets, reboot app. Không gửi khóa vào chat hoặc dán vào file trong repository.')
+    elif file:
         raw = file.getvalue()
         fingerprint = hashlib.sha256(raw).hexdigest() + file.name
         job = st.session_state.get('private_job')
         if not job or job['fingerprint'] != fingerprint:
-            try:
-                with loading('Đang mã hóa file…'):
-                    protected = protect_file(raw, file.name)
-                job = {'fingerprint': fingerprint, 'protected': protected}
-                st.session_state['private_job'] = job
-                st.session_state.pop('private_reviewed', None)
-            except PrivacyError as exc:
-                st.error(str(exc)); st.stop()
-            except OSError:
-                st.error('Không tạo được vault riêng tư; kiểm tra quyền ghi và cấu hình lưu trữ.'); st.stop()
-        protected = job['protected']
-        st.success('Đã mã hóa toàn bộ file và lưu khóa từng file dưới dạng đã được mã hóa trong vault máy chủ.')
-        st.write('File ID: `' + protected['file_id'] + '`')
-        st.download_button('Tải file gốc đã mã hóa', protected['encrypted_bytes'], protected['download_name'], 'application/octet-stream', key='encrypted_download')
-        if Path(file.name).suffix.lower() in ('.csv', '.xlsx'):
-            try:
-                frame = read_table(raw, file.name)
-            except PrivacyError as exc:
-                st.warning(str(exc)); st.stop()
-            st.write(f'Bảng đọc được: {len(frame)} dòng, {len(frame.columns)} cột. Xuất giữ đủ cột và thứ tự. XLSX chỉ hỗ trợ một sheet dữ liệu không có công thức/ảnh/chart.')
-            with st.form('privacy_review_' + protected['file_id']):
-                default_scope = st.session_state.setdefault('privacy_default_scope', 'AUDIT-' + os.urandom(8).hex())
-                scope = st.text_input('Mã phạm vi kiểm toán — dùng cùng mã cho loans và authority để giữ liên kết ID', default_scope)
-                plan = st.data_editor(pd.DataFrame(suggest_columns(frame)), hide_index=True, width='stretch',
-                    disabled=['column', 'reason'], num_rows='fixed',
-                    column_config={'action': st.column_config.SelectboxColumn('Xử lý cột', options=['TOKENIZE', 'MASK', 'KEEP'], required=True)})
-                reviewer = st.selectbox('Người review phương án bảo vệ · tên A–Z', REVIEWERS, index=None, placeholder='Chọn người review')
-                checked = st.checkbox('Tôi đã đối chiếu file gốc; hiểu các cột KEEP còn đọc được và đã xác nhận mục đích sử dụng')
-                submitted = st.form_submit_button('Duyệt và xuất bản mã giả')
-            if submitted:
-                if not checked or not reviewer:
-                    st.error('Chọn người review và xác nhận phương án xử lý cột.')
-                else:
-                    try:
-                        edited = plan.to_dict('records')
-                        with loading('Đang bảo vệ dữ liệu và tạo bảng đối chiếu…'):
-                            reviewed = pseudonymize(frame, edited, scope, reviewer, protected['file_id'], source_bytes=raw, source_name=file.name)
-                        reviewed['source_fingerprint'] = fingerprint
-                        st.session_state['privacy_default_scope'] = scope.strip()
-                        st.session_state['private_reviewed'] = reviewed
-                        st.success('Đã tạo file đúng định dạng nguồn và bảng đối chiếu riêng để auditor tải xuống. Không ghi bảng đối chiếu mới xuống vault/DB/log.')
-                    except PrivacyError as exc:
-                        st.error(str(exc))
-                    except OSError:
-                        st.error('Không xử lý được file; chưa xuất bản mã giả.')
-            reviewed = st.session_state.get('private_reviewed')
-            if reviewed and reviewed['source_fingerprint'] == fingerprint:
-                st.caption('Nếu đổi phương án hoặc scope, bấm Duyệt và xuất lại. Bản bên dưới là kết quả của lần duyệt đã lưu.')
-                st.dataframe(reviewed['frame'].head(20), hide_index=True, width='stretch')
-                st.download_button('1. Tải dữ liệu đã bảo vệ — đúng định dạng nguồn', reviewed['export_bytes'],
-                                   reviewed['export_filename'], reviewed['export_mime'], key='protected_csv_download')
-                st.warning('Bảng đối chiếu CSV và hồ sơ JSON đều chứa dữ liệu gốc. Auditor lưu ở nơi riêng có quyền truy cập phù hợp; không import bảng này vào workflow hoặc gửi cho LLM.')
-                st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor', reviewed['audit_mapping_csv_bytes'],
-                                   'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.csv', 'text/csv', key='auditor_mapping_download')
-                st.download_button('3. Tải hồ sơ đối chiếu JSON có dữ liệu gốc', reviewed['audit_report_json_bytes'],
-                                   'AUDITOR_ONLY_review_' + protected['file_id'] + '.json', 'application/json', key='auditor_review_download')
-                st.caption('Bảng đối chiếu chỉ được giữ tạm trong RAM của phiên để phục vụ tải; tải và lưu riêng trước khi đóng/reboot app.')
-                st.write('Mã tham chiếu bảng ánh xạ: `' + reviewed['mapping_reference'] + '`')
-                with st.form('import_private_' + protected['file_id']):
-                    source = st.selectbox('Import bản đã review vào workflow', ['loans', 'authorities'])
-                    logical_id = st.text_input('Dataset/Authority ID', 'PROTECTED-DEMO')
-                    imported = st.form_submit_button('Import CSV đã bảo vệ')
-                if imported:
-                    fields = {('dataset_id' if source == 'loans' else 'authority_id'): logical_id}
-                    try:
-                        result = mutate('/import/' + source, files={'file': ('protected.csv', reviewed['csv_bytes'])}, data=fields)
-                        st.success('Đã import bản mã giả, snapshot ' + result['snapshot_id'])
-                        st.caption('Bộ test vẫn chỉ hỗ trợ schema/baseline Project 07. Authority đã thay mã tạo hash mới, cần owner đối chiếu và cấu hình phê duyệt đúng snapshot.')
-                    except ApiError as exc:
-                        st.error(str(exc))
-        else:
-            st.caption('File này đã được mã hóa nguyên vẹn. Tự chọn phương án xử lý cột chỉ áp dụng với CSV/XLSX có cấu trúc.')
+            st.caption('File đã tải lên nhưng chưa mã hóa. Bấm nút bên dưới để bắt đầu.')
+            if st.button('Mã hóa file đã chọn', key='encrypt_'+hashlib.sha256(fingerprint.encode()).hexdigest()[:16], type='primary'):
+                try:
+                    with loading('Đang mã hóa file…'):
+                        protected = protect_file(raw, file.name)
+                    job = {'fingerprint': fingerprint, 'protected': protected}
+                    st.session_state['private_job'] = job
+                    st.session_state.pop('private_reviewed', None)
+                except PrivacyError as exc:
+                    st.error(str(exc))
+                except OSError:
+                    st.error('Không tạo được vault riêng tư; kiểm tra quyền ghi và cấu hình lưu trữ.')
+        job = st.session_state.get('private_job')
+        if job and job['fingerprint'] == fingerprint:
+            protected = job['protected']
+            st.success('Đã mã hóa toàn bộ file và lưu khóa từng file dưới dạng đã được mã hóa trong vault máy chủ.')
+            st.write('File ID: `' + protected['file_id'] + '`')
+            st.download_button('Tải file gốc đã mã hóa', protected['encrypted_bytes'], protected['download_name'], 'application/octet-stream', key='encrypted_download')
+            if Path(file.name).suffix.lower() in ('.csv', '.xlsx'):
+                try:
+                    frame = read_table(raw, file.name)
+                except PrivacyError as exc:
+                    st.warning(str(exc)); st.stop()
+                st.write(f'Bảng đọc được: {len(frame)} dòng, {len(frame.columns)} cột. Xuất giữ đủ cột và thứ tự. XLSX chỉ hỗ trợ một sheet dữ liệu không có công thức/ảnh/chart.')
+                with st.form('privacy_review_' + protected['file_id']):
+                    default_scope = st.session_state.setdefault('privacy_default_scope', 'AUDIT-' + os.urandom(8).hex())
+                    scope = st.text_input('Mã phạm vi kiểm toán — dùng cùng mã cho loans và authority để giữ liên kết ID', default_scope)
+                    plan = st.data_editor(pd.DataFrame(suggest_columns(frame)), hide_index=True, width='stretch',
+                        disabled=['column', 'reason'], num_rows='fixed',
+                        column_config={'action': st.column_config.SelectboxColumn('Xử lý cột', options=['TOKENIZE', 'MASK', 'KEEP'], required=True)})
+                    reviewer = st.selectbox('Người review phương án bảo vệ · tên A–Z', REVIEWERS, index=None, placeholder='Chọn người review')
+                    checked = st.checkbox('Tôi đã đối chiếu file gốc; hiểu các cột KEEP còn đọc được và đã xác nhận mục đích sử dụng')
+                    submitted = st.form_submit_button('Duyệt và xuất bản mã giả')
+                if submitted:
+                    if not checked or not reviewer:
+                        st.error('Chọn người review và xác nhận phương án xử lý cột.')
+                    else:
+                        try:
+                            edited = plan.to_dict('records')
+                            with loading('Đang bảo vệ dữ liệu và tạo bảng đối chiếu…'):
+                                reviewed = pseudonymize(frame, edited, scope, reviewer, protected['file_id'], source_bytes=raw, source_name=file.name)
+                            reviewed['source_fingerprint'] = fingerprint
+                            st.session_state['privacy_default_scope'] = scope.strip()
+                            st.session_state['private_reviewed'] = reviewed
+                            st.success('Đã tạo file đúng định dạng nguồn và bảng đối chiếu riêng để auditor tải xuống. Không ghi bảng đối chiếu mới xuống vault/DB/log.')
+                        except PrivacyError as exc:
+                            st.error(str(exc))
+                        except OSError:
+                            st.error('Không xử lý được file; chưa xuất bản mã giả.')
+                reviewed = st.session_state.get('private_reviewed')
+                if reviewed and reviewed['source_fingerprint'] == fingerprint:
+                    st.caption('Nếu đổi phương án hoặc scope, bấm Duyệt và xuất lại. Bản bên dưới là kết quả của lần duyệt đã lưu.')
+                    st.dataframe(reviewed['frame'].head(20), hide_index=True, width='stretch')
+                    st.download_button('1. Tải dữ liệu đã bảo vệ — đúng định dạng nguồn', reviewed['export_bytes'],
+                                       reviewed['export_filename'], reviewed['export_mime'], key='protected_csv_download')
+                    st.warning('Bảng đối chiếu CSV và hồ sơ JSON đều chứa dữ liệu gốc. Auditor lưu ở nơi riêng có quyền truy cập phù hợp; không import bảng này vào workflow hoặc gửi cho LLM.')
+                    st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor', reviewed['audit_mapping_csv_bytes'],
+                                       'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.csv', 'text/csv', key='auditor_mapping_download')
+                    st.download_button('3. Tải hồ sơ đối chiếu JSON có dữ liệu gốc', reviewed['audit_report_json_bytes'],
+                                       'AUDITOR_ONLY_review_' + protected['file_id'] + '.json', 'application/json', key='auditor_review_download')
+                    st.caption('Bảng đối chiếu chỉ được giữ tạm trong RAM của phiên để phục vụ tải; tải và lưu riêng trước khi đóng/reboot app.')
+                    st.write('Mã tham chiếu bảng ánh xạ: `' + reviewed['mapping_reference'] + '`')
+                    with st.form('import_private_' + protected['file_id']):
+                        source = st.selectbox('Import bản đã review vào workflow', ['loans', 'authorities'])
+                        logical_id = st.text_input('Dataset/Authority ID', 'PROTECTED-DEMO')
+                        imported = st.form_submit_button('Import CSV đã bảo vệ')
+                    if imported:
+                        fields = {('dataset_id' if source == 'loans' else 'authority_id'): logical_id}
+                        try:
+                            result = mutate('/import/' + source, files={'file': ('protected.csv', reviewed['csv_bytes'])}, data=fields)
+                            st.success('Đã import bản mã giả, snapshot ' + result['snapshot_id'])
+                            st.caption('Bộ test vẫn chỉ hỗ trợ schema/baseline Project 07. Authority đã thay mã tạo hash mới, cần owner đối chiếu và cấu hình phê duyệt đúng snapshot.')
+                        except ApiError as exc:
+                            st.error(str(exc))
+            else:
+                st.caption('File này đã được mã hóa nguyên vẹn. Tự chọn phương án xử lý cột chỉ áp dụng với CSV/XLSX có cấu trúc.')
     st.warning('Vault local trên Streamlit Community Cloud không được xem là lưu trữ bền vững. Mất khóa chủ hoặc mất file khóa trong vault thì không thể giải mã; cần sao lưu có kiểm soát. Demo chưa có phân quyền tài khoản để dùng dữ liệu khách hàng thật.')
 
 elif page == 'Dữ liệu & Audit Run':

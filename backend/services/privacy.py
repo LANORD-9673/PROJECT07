@@ -40,6 +40,15 @@ def master_key():
     return key
 
 
+def master_key_status():
+    """Return a safe readiness message without exposing the configured secret."""
+    try:
+        master_key()
+    except PrivacyError as exc:
+        return False, str(exc)
+    return True, 'Khóa vault hợp lệ (32 byte, Base64).'
+
+
 def vault_dirs():
     root = Path(os.environ.get('PROJECT07_VAULT_DIR', str(Path(__file__).resolve().parents[1] / 'private_vault'))).expanduser()
     paths = [root, root / 'keys', root / 'encrypted', root / 'maps']

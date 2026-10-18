@@ -19,18 +19,20 @@ TOKENIZE là **mã giả**, không phải ẩn danh tuyệt đối. Vẫn lộ v
 
 ## Khóa và thư mục máy chủ
 
-1. Chủ app tự tạo **khóa chủ** bằng lệnh trên máy riêng:
+1. Chủ app tự tạo **khóa chủ** bằng lệnh trên máy riêng. Khóa đầu ra phải là chuỗi Base64 đại diện đúng 32 byte:
 
 ```powershell
 python scripts/generate_vault_key.py
 ```
 
-2. Sao chép kết quả Base64 vào **Streamlit → Settings → Secrets**:
+2. Với Streamlit Community Cloud, mở ứng dụng → **Settings / App settings → Secrets** và thêm dòng dưới. Với bản chạy local, đặt biến môi trường trước khi khởi chạy:
 
 ```toml
 PROJECT07_VAULT_MASTER_KEY = "CHUOI_BASE64_VUA_TAO"
 PROJECT07_GEMINI_MAX_RETRIES = "2"
 ```
+
+Trong màn hình **Bảo vệ dữ liệu**, trạng thái “Khóa vault hợp lệ” xác nhận app đọc được khóa đúng định dạng. Chọn file rồi bấm **Mã hóa file đã chọn**; sau đó nút tải `.nexus.enc` sẽ xuất hiện. Nếu khóa thiếu hoặc sai, app hiển thị nguyên nhân cấu hình và sẽ không lưu file.
 
 Giữ các biến Gemini và phê duyệt hiện có. Không đưa khóa chủ vào GitHub, chat, README, log hoặc file CSV. Lệnh trên in một bí mật thật: chạy riêng trên máy chủ app, không ghi màn hình/chia sẻ output. Mẫu Secrets trong gói không chứa khóa thật.
 

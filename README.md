@@ -1,4 +1,4 @@
-# NEXUS 2.1 dành cho Streamlit
+# NEXUS 2.2 dành cho Streamlit
 
 Chạy ứng dụng bằng **streamlit_app.py** ở gốc repo. Gói này không cần React, Node.js hoặc dịch vụ FastAPI riêng.
 

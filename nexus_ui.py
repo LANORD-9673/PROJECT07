@@ -66,7 +66,7 @@ def shell():
     st.markdown(f'<div class="nx-brand"><img class="nx-logo" src="{LOGO}" alt="Logo NEXUS"><div><strong>NEXUS</strong><small>AI INTERNAL AUDIT · PROJECT 07</small></div></div>',unsafe_allow_html=True)
     st.sidebar.markdown('### Không gian kiểm toán')
     page=st.sidebar.radio('Menu tác vụ', PAGES,key='nx_page')
-    st.caption('NEXUS 2.1 · STREAMLIT')
+    st.caption('NEXUS 2.2 · STREAMLIT')
     cols=st.columns(4)
     for col,title,target in zip(cols,['Trang chủ','Bảo vệ dữ liệu','Cuộc kiểm toán','Báo cáo'],['Trang chủ','Bảo vệ dữ liệu','Dữ liệu & Audit Run','Report']):
         col.button(title,key='nav_'+target,on_click=navigate,args=(target,),use_container_width=True)
