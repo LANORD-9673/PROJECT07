@@ -1,0 +1,22 @@
+NEXUS | QUY ĐỊNH PHÊ DUYỆT VÀ GIẢI NGÂN KHOẢN VAY
+Mã tài liệu: POL-LOAN-01 | Phiên bản: 2.1-DEMO | Chủ quản: Khối tín dụng mô phỏng
+Ngày hiệu lực mô phỏng: 08/10/2026 | Phân loại: Nội bộ - dữ liệu đào tạo
+Trạng thái: Dự thảo rút gọn, chờ nhóm đối chiếu và xác nhận trước khi chạy baseline.
+
+1. MỤC ĐÍCH VÀ PHẠM VI
+Kiểm soát phân tách nhiệm vụ, hạn mức cá nhân và điều kiện giải ngân đối với bộ khoản vay mô phỏng. T02 chỉ kiểm tra khoản vay VND không quá 2.000.000.000 đồng. Khoản vượt phạm vi phải được auditor xem xét riêng. Ngưỡng và chức danh dưới đây phục vụ demo, không phải quy định của ngân hàng thật.
+
+2. YÊU CẦU KIỂM SOÁT
+2.1. Phân tách nhiệm vụ (C01/T01): Với hồ sơ APPROVED, người lập hồ sơ maker_id phải khác người phê duyệt approver_id. Trùng người là ngoại lệ; thiếu người lập hoặc người duyệt là thiếu thông tin. Hồ sơ không APPROVED không áp dụng T01; thiếu trạng thái phải bổ sung.
+2.2. Hạn mức cá nhân (C02/T02): Người phê duyệt phải có bản phân quyền được đối chiếu độc lập, khớp employee_id và branch_id, còn hiệu lực tại approval_time. Hiệu lực tính cả valid_from và valid_to. Số tiền vay không được vượt authority_limit_vnd. Khoản đến 500.000.000 đồng thuộc Tier 1; trên 500.000.000 đến 2.000.000.000 đồng thuộc Tier 2. Xem bảng authorities_10 đi kèm. Tier chỉ phân loại số tiền; bài kiểm tra không xác minh thẩm quyền theo chức danh.
+2.3. Điều kiện giải ngân (C03/T03): Chỉ giải ngân khi hồ sơ APPROVED và approval_time phải sớm hơn disbursement_time. Hai thời điểm bằng nhau hoặc duyệt sau giải ngân là ngoại lệ. Hồ sơ NOT_DISBURSED không áp dụng T03; thời điểm thiếu hoặc không hợp lệ phải bổ sung. Hồ sơ REJECTED hoặc trạng thái khác APPROVED mà đã giải ngân là ngoại lệ.
+
+3. HỒ SƠ VÀ XỬ LÝ THIẾU THÔNG TIN
+Bằng chứng tối thiểu: sổ khoản vay, người lập/duyệt, quyết định phê duyệt, nhật ký giải ngân và bảng phân quyền. Mọi thời điểm phải có múi giờ. Không tìm thấy phân quyền còn hiệu lực là thiếu thông tin; bản phân quyền sai định dạng hoặc mâu thuẫn hạn mức/chức danh cùng thời điểm phải chặn T02 để kiểm tra. Tên chức danh phải có. T02 vẫn đối chiếu hạn mức khi hồ sơ chưa APPROVED nếu có đủ trường dữ liệu; PASS T02 không chứng minh hồ sơ đã được duyệt.
+
+4. REVIEW VÀ LƯU TRỮ
+Auditor đối chiếu ngày giao dịch, phạm vi áp dụng, policy và authorities trước khi xác nhận baseline. Engine chưa tự kiểm tra ngày hiệu lực policy. Duyệt RCM và test plan trước khi chạy; review exceptions và findings trước khi duyệt báo cáo dự thảo. Kết quả phải truy vết được về mã hồ sơ, dòng dữ liệu, snapshot và điều khoản. Không sửa/xóa snapshot đã gắn vào cuộc kiểm toán.
+
+PHẦN XÁC NHẬN CỦA NHÓM
+Người đối chiếu: __________________  Ngày: __________  Mã biên bản: __________
+Xác nhận riêng policy và bảng authorities trước khi cấu hình SHA256. Tài liệu này không tự ghi nhận đã phê duyệt.

@@ -1,0 +1,12 @@
+.env
+.streamlit/secrets.toml
+*.sqlite*
+*.db
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+private_vault/
+backend/private_vault/
+*.enc
