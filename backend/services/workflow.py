@@ -65,8 +65,8 @@ def log(c,rid,action,details):
 
 def llm_generate(rid,task,system,payload):
  """Gemini drafts only; original grounding validation and human gates follow."""
- from services.gemini import generate, GeminiError
- model=os.environ.get('PROJECT07_GEMINI_MODEL','gemini-3.8-flash').strip().removeprefix('models/')
+ from services.gemini import generate, GeminiError, effective_model
+ model=effective_model()
  start=time.monotonic(); outcome='ERROR'
  try:
   value,model=generate(task,system,payload)

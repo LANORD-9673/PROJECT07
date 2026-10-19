@@ -1,0 +1,9 @@
+NEXUS 2.4 — Streamlit
+
+115 kiểm thử backend đạt. Bao gồm key/model theo từng request và phiên, hai request đồng thời giữ cấu hình riêng, generateContent dùng đúng model, không thay biến môi trường chung, model không hợp lệ bị chặn trước network, lịch sử lỗi ghi đúng model đã chọn. Network Gemini dùng mock, không có key thật.
+
+Streamlit AppTest: nhập key riêng, lấy danh sách model, chọn model, kiểm tra model đang dùng, reset model giữ nguyên key riêng: đạt, không có exception.
+
+Chromium: nhập key được che ký tự, ô key trống sau gửi, tự gõ tên model mới rồi Enter và áp dụng; upload Excel, mã hóa, tự nhập reviewer, xuất Excel đã bảo vệ: đạt, không có Streamlit exception.
+
+Chưa deploy Community Cloud cho người dùng, chưa kiểm chứng quyền/quota/model Google của tài khoản người dùng. Chọn model là thao tác của người dùng; không tự đổi model hoặc key khi API lỗi. Dữ liệu kiểm toán trong demo vẫn dùng chung.

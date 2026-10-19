@@ -7,6 +7,34 @@ import urllib.request
 import urllib.parse
 import random
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+
+_session_api_key = ContextVar('gemini_session_api_key', default=None)
+_session_model = ContextVar('gemini_session_model', default=None)
+
+
+def effective_api_key():
+    override = _session_api_key.get()
+    return override if override is not None else os.environ.get('GEMINI_API_KEY', '').strip()
+
+
+def effective_model():
+    override = _session_model.get()
+    return (override if override is not None else os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash')).strip().removeprefix('models/')
+
+
+@contextmanager
+def api_key_scope(key=None, model=None):
+    """Carry a session credential through one internal request, including worker threads."""
+    token = _session_api_key.set(key.strip() if key is not None else None)
+    model_token = _session_model.set(model)
+    try:
+        yield
+    finally:
+        _session_model.reset(model_token)
+        _session_api_key.reset(token)
 
 
 class GeminiError(Exception):
@@ -18,10 +46,10 @@ class GeminiError(Exception):
 def sanitized_message(message):
     """Retain Google's diagnostic text while removing the configured key and key-like values."""
     text = str(message)
-    key = os.environ.get('GEMINI_API_KEY', '').strip()
-    if key:
-        for value in {key, urllib.parse.quote(key, safe=''), urllib.parse.quote_plus(key)}:
-            text = text.replace(value, '[REDACTED]')
+    for key in {effective_api_key(), os.environ.get('GEMINI_API_KEY', '').strip()}:
+        if key:
+            for value in {key, urllib.parse.quote(key, safe=''), urllib.parse.quote_plus(key)}:
+                text = text.replace(value, '[REDACTED]')
     text = re.sub(r'AIza[A-Za-z0-9_-]{20,}', '[REDACTED]', text)
     text = re.sub(r'(?i)([?&](?:key|api_key|access_token)=)[^\s&]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+', r'\1[REDACTED]', text)
@@ -72,9 +100,9 @@ def http_error(exc):
 
 def check_access():
     """Read model metadata only; this does not prove successful content generation."""
-    key = os.environ.get('GEMINI_API_KEY', '').strip()
+    key = effective_api_key()
     if not key:
-        raise GeminiError('MODEL_CONFIGURATION_ERROR', 'Chưa có GEMINI_API_KEY trong Streamlit Secrets.', 503)
+        raise GeminiError('MODEL_CONFIGURATION_ERROR', 'Chưa có GEMINI_API_KEY. Nhập key riêng ở thanh bên hoặc cấu hình Streamlit Secrets.', 503)
     req = urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',
                                  headers={'x-goog-api-key': key}, method='GET')
     try:
@@ -92,7 +120,7 @@ def check_access():
               if isinstance(m, dict) and isinstance(m.get('name'), str)
               and re.fullmatch(r'models/[A-Za-z0-9][A-Za-z0-9._-]*', m['name'])
               and 'generateContent' in (m.get('supportedGenerationMethods') or [])]
-    selected = os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash').strip().removeprefix('models/')
+    selected = effective_model()
     return {'metadata_access': 'OK', 'configured_model': selected,
             'configured_model_listed': selected in models, 'generate_content_models': models,
             'list_has_more_pages': bool(data.get('nextPageToken')),
@@ -147,10 +175,10 @@ def schema_for(task):
 
 
 def generate(task, system, payload):
-    key = os.environ.get('GEMINI_API_KEY', '').strip()
-    model = os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash').strip().removeprefix('models/')
+    key = effective_api_key()
+    model = effective_model()
     if not key:
-        raise GeminiError('MODEL_CONFIGURATION_ERROR', 'Set GEMINI_API_KEY in Streamlit Secrets or environment.', 503)
+        raise GeminiError('MODEL_CONFIGURATION_ERROR', 'Chưa có GEMINI_API_KEY. Nhập key riêng ở thanh bên hoặc cấu hình Streamlit Secrets.', 503)
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', model):
         raise GeminiError('MODEL_CONFIGURATION_ERROR', 'Invalid PROJECT07_GEMINI_MODEL.', 422)
     try:

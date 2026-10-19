@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -21,7 +22,7 @@ except FileNotFoundError:
     pass
 os.environ['PROJECT07_REQUIRE_GATES'] = '1'
 
-from streamlit_runtime import initialize, request, ApiError
+from streamlit_runtime import initialize, request as backend_request, ApiError
 from nexus_ui import shell, home, loading
 REVIEWERS = ['Hoàng Minh Khuê', 'Đinh Nghiêm Khánh Lam', 'Phan Ngô Ngọc Lan', 'Bùi Lê Hồng Ngọc', 'Trương Thị Thanh Thảo', 'Trương Mỹ Uyên']
 
@@ -33,6 +34,10 @@ def setup_backend():
 
 
 setup_backend()
+
+
+def request(method, path, **kwargs):
+    return backend_request(method, path, gemini_api_key=st.session_state.get('gemini_session_key'), gemini_model=st.session_state.get('gemini_session_model'), **kwargs)
 
 
 def api(path):
@@ -62,7 +67,7 @@ def download(data, name, key):
 def review_form(title, path, key, extra=None, decision_key=None, disabled=False):
     with st.form(key):
         st.markdown(f'**{title}**')
-        reviewer = st.selectbox('Người review · tên A–Z', REVIEWERS, index=None, placeholder='Chọn người review', key=key + '_reviewer')
+        reviewer = st.selectbox('Người review · chọn hoặc nhập tên', REVIEWERS, index=None, placeholder='Chọn hoặc gõ tên rồi nhấn Enter', key=key + '_reviewer', accept_new_options=True)
         reason = st.text_area('Căn cứ / ghi chú review', key=key + '_reason')
         payload = dict(extra or {})
         if decision_key:
@@ -82,6 +87,54 @@ def review_form(title, path, key, extra=None, decision_key=None, disabled=False)
 
 
 page = shell()
+with st.sidebar.container(border=True):
+    st.markdown('**AI của bạn · Gemini**')
+    st.caption('Key riêng được ưu tiên trong phiên này. Nếu không nhập, app dùng key của chủ ứng dụng khi có.')
+    with st.form('session_gemini_key', clear_on_submit=True):
+        entered_key = st.text_input('API key Gemini riêng', type='password', max_chars=512, autocomplete='off')
+        save_key = st.form_submit_button('Dùng key này cho phiên hiện tại')
+    if save_key:
+        value = entered_key.strip()
+        if not value or any(char.isspace() for char in value):
+            st.error('Nhập API key không có khoảng trắng. Key hiện tại chưa thay đổi.')
+        else:
+            st.session_state['gemini_session_key'] = value
+            st.session_state.pop('gemini_model_options', None)
+            st.success('Đã nhận key riêng; chưa kiểm chứng quyền gọi model hoặc quota.')
+    if st.session_state.get('gemini_session_key'):
+        st.caption('Đang dùng: API key riêng của phiên này.')
+        if st.button('Xóa key riêng và dùng cấu hình ứng dụng', key='clear_session_gemini_key'):
+            st.session_state.pop('gemini_session_key', None)
+            st.session_state.pop('gemini_model_options', None)
+            st.rerun()
+    else:
+        st.caption('Đang dùng: cấu hình API của ứng dụng.' if os.environ.get('GEMINI_API_KEY', '').strip() else 'Chưa có API key đang dùng.')
+    if st.button('Lấy danh sách model khả dụng', key='session_list_models'):
+        try:
+            checked = mutate('/llm/check')
+            st.session_state['gemini_model_options'] = checked['generate_content_models']
+            st.success('Đã lấy danh sách model cho key đang dùng. Chưa kiểm chứng quota tạo nội dung.')
+        except ApiError as exc:
+            st.error(str(exc))
+    active_model = st.session_state.get('gemini_session_model') or os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash').strip().removeprefix('models/')
+    model_options = list(dict.fromkeys([active_model] + st.session_state.get('gemini_model_options', [])))
+    with st.form('session_model_form'):
+        chosen_model = st.selectbox('Mô hình AI · chọn hoặc nhập tên', model_options, key='session_model_choice', accept_new_options=True,
+                                    placeholder='Chọn model hoặc gõ tên rồi Enter')
+        save_model = st.form_submit_button('Dùng model này')
+    if save_model:
+        value = str(chosen_model or '').strip().removeprefix('models/')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', value):
+            st.error('Tên model không hợp lệ. Nhập mã model do Google cung cấp.')
+        else:
+            st.session_state['gemini_session_model'] = value
+            st.success('Đã áp dụng model cho các lần gọi AI tiếp theo trong phiên.')
+    st.caption('Model đang dùng: ' + (st.session_state.get('gemini_session_model') or active_model))
+    if st.session_state.get('gemini_session_model') and st.button('Dùng model mặc định của ứng dụng', key='clear_session_model'):
+        st.session_state.pop('gemini_session_model', None)
+        st.session_state.pop('session_model_choice', None)
+        st.rerun()
+    st.caption('Key lưu tạm trong RAM của phiên, không ghi vào hồ sơ kiểm toán. Quota theo Google project và model; key khác cùng project vẫn chung hạn mức. Model đã chọn phải được key cho phép sử dụng.')
 if 'notice' in st.session_state:
     st.success(st.session_state.pop('notice'))
 
@@ -112,8 +165,8 @@ elif page == 'Vai trò & cấu hình':
     st.info('Streamlit chạy giao diện Python và backend trong cùng ứng dụng. Không cần deploy FastAPI riêng hoặc build React.')
     st.markdown('**Trạng thái cấu hình**')
     st.write('Provider: **Gemini API — Google AI Studio**')
-    st.write('API key: ' + ('đã cấu hình' if os.environ.get('GEMINI_API_KEY', '').strip() else 'chưa cấu hình GEMINI_API_KEY'))
-    st.write('Model: ' + os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash'))
+    st.write('API key: ' + ('key riêng của phiên hiện tại' if st.session_state.get('gemini_session_key') else 'key của chủ ứng dụng' if os.environ.get('GEMINI_API_KEY', '').strip() else 'chưa cấu hình — nhập key ở thanh bên'))
+    st.write('Model: ' + (st.session_state.get('gemini_session_model') or os.environ.get('PROJECT07_GEMINI_MODEL', 'gemini-3.8-flash')))
     from services.privacy import master_key_status
     vault_ready, vault_message = master_key_status()
     st.write('Khóa mã hóa vault: ' + ('đã sẵn sàng' if vault_ready else 'chưa sẵn sàng'))
@@ -123,9 +176,10 @@ elif page == 'Vai trò & cấu hình':
     if st.button('Kiểm tra key và danh sách model', key='gemini_check'):
         try:
             checked = mutate('/llm/check')
+            st.session_state['gemini_model_options'] = checked['generate_content_models']
             st.success('Google chấp nhận truy cập danh sách model. Chưa kiểm chứng việc tạo nội dung.')
             if not checked['configured_model_listed']:
-                st.warning('Model đang cấu hình chưa có trong danh sách trả về. Chọn model hỗ trợ generateContent từ danh sách dưới và cập nhật Secrets.')
+                st.warning('Model đang dùng chưa có trong danh sách trả về. Bấm Lấy danh sách model khả dụng ở thanh bên rồi chọn model khác, hoặc tự nhập tên model Google cung cấp.')
             st.json(checked)
         except ApiError as exc:
             st.error(str(exc))
@@ -136,7 +190,7 @@ elif page == 'Vai trò & cấu hình':
             st.text(name)
             st.code(hashlib.sha256((ROOT / 'demo' / name).read_bytes()).hexdigest())
         st.caption('Hash không thay cho phê duyệt. Chỉ cấu hình Secrets sau khi con người đã rà soát đúng bộ tài liệu.')
-    st.info('Nhập GEMINI_API_KEY trong Streamlit Secrets hoặc biến môi trường ở PyCharm. Không cần Ollama chạy trên laptop. Model lỗi sẽ dừng bước tương ứng; không thay thế bằng kết quả giả.')
+    st.info('Nhập API key riêng ở thanh bên, hoặc dùng GEMINI_API_KEY của chủ app trong Streamlit Secrets. Nếu key riêng lỗi, app dừng bước đó để bạn xử lý; không tự dùng quota của chủ app thay thế.')
 
 elif page == 'Bảo vệ dữ liệu':
     from services.privacy import protect_file, read_table, suggest_columns, pseudonymize, PrivacyError, master_key_status
@@ -196,7 +250,7 @@ elif page == 'Bảo vệ dữ liệu':
                     plan = st.data_editor(pd.DataFrame(suggest_columns(frame)), hide_index=True, width='stretch',
                         disabled=['column', 'reason'], num_rows='fixed',
                         column_config={'action': st.column_config.SelectboxColumn('Xử lý cột', options=['TOKENIZE', 'MASK', 'KEEP'], required=True)})
-                    reviewer = st.selectbox('Người review phương án bảo vệ · tên A–Z', REVIEWERS, index=None, placeholder='Chọn người review')
+                    reviewer = st.selectbox('Người review phương án bảo vệ · chọn hoặc nhập tên', REVIEWERS, index=None, placeholder='Chọn hoặc gõ tên rồi nhấn Enter', accept_new_options=True)
                     checked = st.checkbox('Tôi đã đối chiếu file gốc; hiểu các cột KEEP còn đọc được và đã xác nhận mục đích sử dụng')
                     submitted = st.form_submit_button('Duyệt và xuất bản mã giả')
                 if submitted:

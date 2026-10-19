@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / 'backend'))
 from main import app
 from models.db import init_db
 from services.workflow import setup
+from services.gemini import api_key_scope
 
 
 class ApiError(RuntimeError):
@@ -20,10 +21,11 @@ def initialize():
     setup()
 
 
-async def _request(method, path, **kwargs):
+async def _request(method, path, gemini_api_key=None, gemini_model=None, **kwargs):
     # A separate client per call avoids sharing cookies/state between browser sessions.
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://internal') as client:
-        response = await client.request(method, '/api' + path, **kwargs)
+    with api_key_scope(gemini_api_key, gemini_model):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://internal') as client:
+            response = await client.request(method, '/api' + path, **kwargs)
     body = response.json()
     if response.is_error or body.get('status') == 'error':
         error = (body.get('errors') or [body.get('detail') or {}])[0]
