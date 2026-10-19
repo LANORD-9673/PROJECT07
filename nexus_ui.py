@@ -65,8 +65,9 @@ def shell():
     </style>'''.replace('COLORS',colors).replace('SCHEME','dark' if dark else 'light').replace('SYMBOL',SYMBOL),unsafe_allow_html=True)
     st.markdown(f'<div class="nx-brand"><img class="nx-logo" src="{LOGO}" alt="Logo NEXUS"><div><strong>NEXUS</strong><small>AI INTERNAL AUDIT · PROJECT 07</small></div></div>',unsafe_allow_html=True)
     st.sidebar.markdown('### Không gian kiểm toán')
-    page=st.sidebar.radio('Menu tác vụ', PAGES,key='nx_page')
-    st.caption('NEXUS 2.4 · STREAMLIT')
+    names={'Dữ liệu & Audit Run':'Cuộc kiểm toán', 'RCM':'Ma trận rủi ro và kiểm soát', 'Test Plan':'Kế hoạch kiểm tra', 'Tests & Exceptions':'Kiểm tra và ngoại lệ', 'Findings':'Phát hiện kiểm toán', 'Report':'Báo cáo kiểm toán', 'Evaluation':'Đánh giá và hồ sơ'}
+    page=st.sidebar.radio('Menu tác vụ', PAGES,key='nx_page',format_func=lambda x:names.get(x,x))
+    st.caption('NEXUS 2.5 · STREAMLIT')
     cols=st.columns(4)
     for col,title,target in zip(cols,['Trang chủ','Bảo vệ dữ liệu','Cuộc kiểm toán','Báo cáo'],['Trang chủ','Bảo vệ dữ liệu','Dữ liệu & Audit Run','Report']):
         col.button(title,key='nav_'+target,on_click=navigate,args=(target,),use_container_width=True)

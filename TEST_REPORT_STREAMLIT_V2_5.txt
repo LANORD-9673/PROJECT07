@@ -1,0 +1,11 @@
+NEXUS 2.5 — giao diện nghiệp vụ dễ đọc và báo cáo Word
+
+120 bài kiểm thử backend/report đạt. Có kiểm tra số liệu thiếu không biến thành 0/100%, đối chứng Python không bị trình bày thành độ chính xác AI, đếm ngoại lệ theo lượt kiểm tra, trích dẫn và giá trị quan sát được giữ trong Word, biên bản bảo vệ không chứa giá trị gốc từng ô, bảng đối chiếu giữ đủ giá trị gốc/mã bảo vệ.
+
+Luồng tích hợp dùng 10 hồ sơ mẫu, AI giả lập: tạo và review RCM/Plan; chạy 30 lượt kiểm tra; review 3 ngoại lệ; tạo/review 3 findings và báo cáo. AppTest kiểm tra đủ các trang Dữ liệu, RCM, Plan, Tests, Findings, Report, Evaluation không có JSON panel hoặc Streamlit exception. Bảo vệ dữ liệu dùng lựa chọn tiếng Việt vẫn xuất Excel đúng định dạng và biên bản Word.
+
+Chromium: giao diện Cuộc kiểm toán và Evaluation dễ đọc; tải báo cáo Word thành công; nhập tên reviewer mới trong phần bảo vệ dữ liệu; xuất Excel và biên bản Word; không có Streamlit exception/JSON panel.
+
+Báo cáo Evaluation được render và kiểm tra trực quan toàn bộ 5 trang. Đã sửa đường viền thừa của tiêu đề, dòng bảng bị tách sang hai trang; bảng có header lặp và số trang.
+
+File demo/NEXUS_Mau_bao_cao_danh_gia.docx chỉ minh họa định dạng bằng dữ liệu và AI giả lập, không phải kết quả kiểm toán của người dùng. Bản này chưa deploy vào Streamlit Community Cloud của người dùng và chưa kiểm chứng live Google/quota của người dùng.

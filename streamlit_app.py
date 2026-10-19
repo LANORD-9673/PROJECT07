@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import re
+from datetime import date, time, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -24,6 +26,7 @@ os.environ['PROJECT07_REQUIRE_GATES'] = '1'
 
 from streamlit_runtime import initialize, request as backend_request, ApiError
 from nexus_ui import shell, home, loading
+import nexus_reports as readable
 REVIEWERS = ['Hoàng Minh Khuê', 'Đinh Nghiêm Khánh Lam', 'Phan Ngô Ngọc Lan', 'Bùi Lê Hồng Ngọc', 'Trương Thị Thanh Thảo', 'Trương Mỹ Uyên']
 
 
@@ -60,8 +63,42 @@ def action(label, path, payload=None, disabled=False, key=None):
 
 
 def download(data, name, key):
-    st.download_button('Tải JSON và bằng chứng', json.dumps(data, ensure_ascii=False, indent=2),
-                       file_name=name, mime='application/json', key=key)
+    if isinstance(data, list):
+        report = {'title': 'Kết quả kiểm tra dữ liệu', 'sections': [readable.table_section('Chi tiết kết quả', readable.result_rows(data))]}
+    else:
+        report = {'title': readable.KINDS.get(data.get('kind'), 'Tài liệu kiểm toán'),
+                  'metadata': [('Trạng thái', readable.label(data.get('state'))), ('Model đã dùng', data.get('model'))],
+                  'sections': readable.document_sections(data)}
+    st.download_button('Tải tài liệu Word dễ đọc', readable.word_bytes(report),
+                       file_name=str(Path(name).with_suffix('.docx')),
+                       mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document', key=key)
+
+
+def show_table(rows):
+    if rows:
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width='stretch')
+
+
+def show_evidence(item):
+    st.write(readable.reason(item.get('reason_code')))
+    show_table(readable.evidence_rows(item))
+    observed = item.get('observed_values', {})
+    if observed:
+        show_table([{'Trường được đối chiếu': readable.field(k), 'Giá trị quan sát': readable.plain(v)} for k, v in observed.items()])
+    if item.get('result_id'):
+        st.caption('Mã kết quả để truy vết: ' + item['result_id'])
+
+
+def show_sections(report):
+    for section in report['sections']:
+        if section['title'].startswith('Phụ lục'):
+            with st.expander(section['title']):
+                if section['text']: st.write(section['text'])
+                show_table(section['rows'])
+        else:
+            st.markdown('### ' + section['title'])
+            if section['text']: st.write(section['text'])
+            show_table(section['rows'])
 
 
 def review_form(title, path, key, extra=None, decision_key=None, disabled=False):
@@ -71,12 +108,12 @@ def review_form(title, path, key, extra=None, decision_key=None, disabled=False)
         reason = st.text_area('Căn cứ / ghi chú review', key=key + '_reason')
         payload = dict(extra or {})
         if decision_key:
-            payload[decision_key] = st.selectbox('Kết luận', ['CONFIRMED', 'NEEDS_FOLLOWUP', 'REJECTED'])
+            payload[decision_key] = st.selectbox('Kết luận', ['CONFIRMED', 'NEEDS_FOLLOWUP', 'REJECTED'], format_func=readable.label)
         checked = st.checkbox('Tôi đã đối chiếu nguồn và bằng chứng liên quan')
         submitted = st.form_submit_button('Lưu review', disabled=disabled)
     if submitted:
         if not checked or not (reviewer or '').strip() or not reason.strip():
-            st.error('Cần đối chiếu bằng chứng, nhập người review và căn cứ trước khi lưu.')
+            st.error('Cần đối chiếu bằng chứng, chọn hoặc nhập tên người review và ghi căn cứ trước khi lưu.')
         else:
             try:
                 mutate(path, dict(payload, reviewer=reviewer, reason=reason))
@@ -142,7 +179,7 @@ run_list = api('/audit-runs')
 run_ids = [x['run_id'] for x in run_list]
 labels = {x['run_id']: x['audit_name'] + ' · ' + x['run_id'][:8] for x in run_list}
 selected = st.session_state.get('active_run')
-rid = st.sidebar.selectbox('Audit Run', run_ids, index=run_ids.index(selected) if selected in run_ids else 0,
+rid = st.sidebar.selectbox('Cuộc kiểm toán đang mở', run_ids, index=run_ids.index(selected) if selected in run_ids else 0,
                            format_func=lambda x: labels[x]) if run_ids else None
 if rid:
     st.session_state['active_run'] = rid
@@ -180,7 +217,8 @@ elif page == 'Vai trò & cấu hình':
             st.success('Google chấp nhận truy cập danh sách model. Chưa kiểm chứng việc tạo nội dung.')
             if not checked['configured_model_listed']:
                 st.warning('Model đang dùng chưa có trong danh sách trả về. Bấm Lấy danh sách model khả dụng ở thanh bên rồi chọn model khác, hoặc tự nhập tên model Google cung cấp.')
-            st.json(checked)
+            show_table([{'Model tạo nội dung được phép truy cập': name} for name in checked['generate_content_models']])
+            st.caption(checked['note'])
         except ApiError as exc:
             st.error(str(exc))
     pins = all(os.environ.get(x, '').strip() for x in ('PROJECT07_APPROVED_BASELINE_SHA256', 'PROJECT07_APPROVED_AUTHORITY_SHA256', 'PROJECT07_AUTHORITY_APPROVAL_REFERENCE'))
@@ -195,8 +233,8 @@ elif page == 'Vai trò & cấu hình':
 elif page == 'Bảo vệ dữ liệu':
     from services.privacy import protect_file, read_table, suggest_columns, pseudonymize, PrivacyError, master_key_status
     st.subheader('Bảo vệ dữ liệu trước khi phân tích')
-    st.info('File gốc được mã hóa AES-256-GCM khi bạn bấm nút mã hóa. Bản mã giả giữ cấu trúc nguồn và cần auditor review trước khi tải hoặc import.')
-    st.caption('Mã giả không phải dữ liệu ẩn danh tuyệt đối. Cột KEEP còn là dữ liệu có thể đọc được. Chỉ gửi bản đã review vào quy trình kiểm toán.')
+    st.info('Bước 1: mã hóa file gốc để bảo vệ toàn bộ nội dung. Bước 2: chọn cách bảo vệ từng cột để tạo bản dữ liệu dùng cho kiểm toán. Bước 3: auditor review rồi tải file hoặc đưa vào cuộc kiểm toán.')
+    st.caption('Thay bằng mã giả: thay tên hoặc thông tin nhận dạng bằng mã. Che giá trị: ẩn nội dung nhưng giữ cột. Giữ nguyên: giữ dữ liệu cần tính toán. Auditor cần kiểm tra lại mọi cột trước khi sử dụng.')
     sample_path = ROOT / 'demo' / 'loans_10.csv'
     if sample_path.is_file():
         st.download_button('Tải CSV giả lập 10 khách hàng', sample_path.read_bytes(),
@@ -211,10 +249,9 @@ elif page == 'Bảo vệ dữ liệu':
     vault_ready, vault_message = master_key_status()
     if not vault_ready:
         st.error('Chưa thể mã hóa vì khóa vault chưa được cấu hình đúng.')
-        st.caption(vault_message)
-        st.markdown('Chủ ứng dụng: tạo khóa trên máy riêng bằng `python scripts/generate_vault_key.py`, sau đó thêm vào **Streamlit → App settings → Secrets**. Giữ nguyên khóa cũ nếu vault đã có file; không đưa khóa lên GitHub.')
-        st.code('PROJECT07_VAULT_MASTER_KEY = "DAN_KHOA_BASE64_32_BYTE_VAO_DAY"', language='toml')
-        st.caption('Sau khi lưu Secrets, reboot app. Không gửi khóa vào chat hoặc dán vào file trong repository.')
+        st.info('Liên hệ chủ ứng dụng để thiết lập khóa bảo vệ file trong phần quản trị Streamlit. Sau khi thiết lập, mở lại trang này và chọn file để tiếp tục.')
+        with st.expander('Hướng dẫn dành cho chủ ứng dụng'):
+            st.write('Xem file HUONG_DAN_BAO_VE_DU_LIEU.md trong gói mã nguồn. Khóa bảo vệ file được đặt trong Streamlit Secrets và cần giữ nguyên khi cập nhật ứng dụng.')
     elif file:
         raw = file.getvalue()
         fingerprint = hashlib.sha256(raw).hexdigest() + file.name
@@ -236,7 +273,7 @@ elif page == 'Bảo vệ dữ liệu':
         if job and job['fingerprint'] == fingerprint:
             protected = job['protected']
             st.success('Đã mã hóa toàn bộ file và lưu khóa từng file dưới dạng đã được mã hóa trong vault máy chủ.')
-            st.write('File ID: `' + protected['file_id'] + '`')
+            st.caption('Mã lưu trữ file đã bảo vệ: ' + protected['file_id'])
             st.download_button('Tải file gốc đã mã hóa', protected['encrypted_bytes'], protected['download_name'], 'application/octet-stream', key='encrypted_download')
             if Path(file.name).suffix.lower() in ('.csv', '.xlsx'):
                 try:
@@ -246,52 +283,56 @@ elif page == 'Bảo vệ dữ liệu':
                 st.write(f'Bảng đọc được: {len(frame)} dòng, {len(frame.columns)} cột. Xuất giữ đủ cột và thứ tự. XLSX chỉ hỗ trợ một sheet dữ liệu không có công thức/ảnh/chart.')
                 with st.form('privacy_review_' + protected['file_id']):
                     default_scope = st.session_state.setdefault('privacy_default_scope', 'AUDIT-' + os.urandom(8).hex())
-                    scope = st.text_input('Mã phạm vi kiểm toán — dùng cùng mã cho loans và authority để giữ liên kết ID', default_scope)
-                    plan = st.data_editor(pd.DataFrame(suggest_columns(frame)), hide_index=True, width='stretch',
-                        disabled=['column', 'reason'], num_rows='fixed',
-                        column_config={'action': st.column_config.SelectboxColumn('Xử lý cột', options=['TOKENIZE', 'MASK', 'KEEP'], required=True)})
+                    scope = st.text_input('Mã phạm vi kiểm toán — dùng giống nhau cho hồ sơ vay và bảng phân quyền', default_scope)
+                    suggestion = pd.DataFrame(suggest_columns(frame))
+                    suggestion['action'] = suggestion['action'].map(readable.ACTIONS)
+                    suggestion['meaning'] = suggestion['column'].map(readable.field)
+                    plan = st.data_editor(suggestion, hide_index=True, width='stretch',
+                        disabled=['column', 'meaning', 'reason'], num_rows='fixed',
+                        column_config={'column': 'Tên cột trong file', 'meaning': 'Nội dung dữ liệu', 'reason': 'Vì sao được đề xuất', 'action': st.column_config.SelectboxColumn('Cách bảo vệ', options=list(readable.ACTIONS.values()), required=True)}, column_order=['column', 'meaning', 'action', 'reason'])
                     reviewer = st.selectbox('Người review phương án bảo vệ · chọn hoặc nhập tên', REVIEWERS, index=None, placeholder='Chọn hoặc gõ tên rồi nhấn Enter', accept_new_options=True)
-                    checked = st.checkbox('Tôi đã đối chiếu file gốc; hiểu các cột KEEP còn đọc được và đã xác nhận mục đích sử dụng')
+                    checked = st.checkbox('Tôi đã đối chiếu file gốc; xác nhận các cột giữ nguyên được phép sử dụng cho kiểm toán')
                     submitted = st.form_submit_button('Duyệt và xuất bản mã giả')
                 if submitted:
                     if not checked or not reviewer:
                         st.error('Chọn người review và xác nhận phương án xử lý cột.')
                     else:
                         try:
-                            edited = plan.to_dict('records')
+                            codes = {value: key for key, value in readable.ACTIONS.items()}
+                            edited = [{'column': row['column'], 'action': codes[row['action']], 'reason': row['reason']} for row in plan.to_dict('records')]
                             with loading('Đang bảo vệ dữ liệu và tạo bảng đối chiếu…'):
                                 reviewed = pseudonymize(frame, edited, scope, reviewer, protected['file_id'], source_bytes=raw, source_name=file.name)
                             reviewed['source_fingerprint'] = fingerprint
                             st.session_state['privacy_default_scope'] = scope.strip()
                             st.session_state['private_reviewed'] = reviewed
-                            st.success('Đã tạo file đúng định dạng nguồn và bảng đối chiếu riêng để auditor tải xuống. Không ghi bảng đối chiếu mới xuống vault/DB/log.')
+                            st.success('Đã tạo file đúng định dạng nguồn và bảng đối chiếu riêng để auditor tải xuống. Bảng đối chiếu chỉ dành cho auditor tải và lưu riêng.')
                         except PrivacyError as exc:
                             st.error(str(exc))
                         except OSError:
                             st.error('Không xử lý được file; chưa xuất bản mã giả.')
                 reviewed = st.session_state.get('private_reviewed')
                 if reviewed and reviewed['source_fingerprint'] == fingerprint:
-                    st.caption('Nếu đổi phương án hoặc scope, bấm Duyệt và xuất lại. Bản bên dưới là kết quả của lần duyệt đã lưu.')
-                    st.dataframe(reviewed['frame'].head(20), hide_index=True, width='stretch')
+                    st.caption('Nếu đổi phương án hoặc phạm vi, bấm Duyệt và xuất lại. Bản bên dưới là kết quả của lần duyệt đã lưu.')
+                    st.dataframe(reviewed['frame'].head(20).rename(columns=readable.FIELDS), hide_index=True, width='stretch')
                     st.download_button('1. Tải dữ liệu đã bảo vệ — đúng định dạng nguồn', reviewed['export_bytes'],
                                        reviewed['export_filename'], reviewed['export_mime'], key='protected_csv_download')
-                    st.warning('Bảng đối chiếu CSV và hồ sơ JSON đều chứa dữ liệu gốc. Auditor lưu ở nơi riêng có quyền truy cập phù hợp; không import bảng này vào workflow hoặc gửi cho LLM.')
-                    st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor', reviewed['audit_mapping_csv_bytes'],
+                    st.warning('Bảng đối chiếu chứa giá trị gốc và mã tương ứng. Auditor cần lưu riêng ở nơi có quyền truy cập phù hợp; không đưa bảng này vào cuộc kiểm toán hoặc gửi cho AI. Biên bản Word bên dưới ghi nhận phương án và người review, không chứa giá trị gốc từng ô.')
+                    st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor', readable.readable_mapping(reviewed['audit_mapping_csv_bytes']),
                                        'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.csv', 'text/csv', key='auditor_mapping_download')
-                    st.download_button('3. Tải hồ sơ đối chiếu JSON có dữ liệu gốc', reviewed['audit_report_json_bytes'],
-                                       'AUDITOR_ONLY_review_' + protected['file_id'] + '.json', 'application/json', key='auditor_review_download')
+                    st.download_button('3. Tải biên bản bảo vệ dữ liệu Word', readable.word_bytes(readable.privacy_report(reviewed)),
+                                       'NEXUS_Bien_ban_bao_ve_' + protected['file_id'] + '.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', key='auditor_review_download')
                     st.caption('Bảng đối chiếu chỉ được giữ tạm trong RAM của phiên để phục vụ tải; tải và lưu riêng trước khi đóng/reboot app.')
-                    st.write('Mã tham chiếu bảng ánh xạ: `' + reviewed['mapping_reference'] + '`')
+                    st.caption('Mã tham chiếu bảng đối chiếu để auditor lưu trữ: ' + reviewed['mapping_reference'])
                     with st.form('import_private_' + protected['file_id']):
-                        source = st.selectbox('Import bản đã review vào workflow', ['loans', 'authorities'])
-                        logical_id = st.text_input('Dataset/Authority ID', 'PROTECTED-DEMO')
-                        imported = st.form_submit_button('Import CSV đã bảo vệ')
+                        source = st.selectbox('Đưa bản đã review vào cuộc kiểm toán', ['loans', 'authorities'], format_func=lambda x: readable.SOURCES[x])
+                        logical_id = st.text_input('Mã bộ dữ liệu để lưu và tra cứu', 'PROTECTED-DEMO')
+                        imported = st.form_submit_button('Lưu dữ liệu đã bảo vệ vào cuộc kiểm toán')
                     if imported:
                         fields = {('dataset_id' if source == 'loans' else 'authority_id'): logical_id}
                         try:
                             result = mutate('/import/' + source, files={'file': ('protected.csv', reviewed['csv_bytes'])}, data=fields)
-                            st.success('Đã import bản mã giả, snapshot ' + result['snapshot_id'])
-                            st.caption('Bộ test vẫn chỉ hỗ trợ schema/baseline Project 07. Authority đã thay mã tạo hash mới, cần owner đối chiếu và cấu hình phê duyệt đúng snapshot.')
+                            st.success('Đã lưu phiên bản dữ liệu đã bảo vệ để sử dụng trong cuộc kiểm toán.')
+                            st.caption('Các thủ tục tự động hiện hỗ trợ cấu trúc hồ sơ Project 07. Bảng phân quyền sau khi thay mã là một bản mới; người quản trị cần đối chiếu và duyệt lại trước khi kiểm tra hạn mức.')
                         except ApiError as exc:
                             st.error(str(exc))
             else:
@@ -299,9 +340,9 @@ elif page == 'Bảo vệ dữ liệu':
     st.warning('Vault local trên Streamlit Community Cloud không được xem là lưu trữ bền vững. Mất khóa chủ hoặc mất file khóa trong vault thì không thể giải mã; cần sao lưu có kiểm soát. Demo chưa có phân quyền tài khoản để dùng dữ liệu khách hàng thật.')
 
 elif page == 'Dữ liệu & Audit Run':
-    st.subheader('1. Import dữ liệu và tạo Audit Run')
-    st.caption('Dữ liệu giả lập có sẵn; snapshot giữ hash và phiên bản để truy vết.')
-    if st.button('Import bộ demo 10 khách hàng', type='primary'):
+    st.subheader('Tiếp nhận hồ sơ và tạo cuộc kiểm toán')
+    st.caption('Chọn bộ dữ liệu, chính sách và bảng phân quyền sử dụng. Mỗi file được giữ theo phiên bản để có thể đối chiếu lại bằng chứng.')
+    if st.button('Tiếp nhận bộ hồ sơ mẫu 10 khách hàng', type='primary'):
         try:
             definitions = [
                 ('policies', 'POL-LOAN-01_compact.txt', {'policy_id': 'POL-LOAN-01', 'policy_set_id': 'BASELINE', 'effective_from': '2026-10-08T00:00:00+07:00'}),
@@ -310,29 +351,31 @@ elif page == 'Dữ liệu & Audit Run':
             ]
             for endpoint, name, fields in definitions:
                 mutate('/import/' + endpoint, files={'file': (name, (ROOT / 'demo' / name).read_bytes())}, data=fields)
-            st.session_state['notice'] = 'Đã import bộ demo. Chọn snapshot bên dưới để tạo Audit Run.'
+            st.session_state['notice'] = 'Đã tiếp nhận bộ hồ sơ mẫu. Chọn phiên bản tài liệu bên dưới để tạo cuộc kiểm toán.'
             st.rerun()
         except ApiError as exc:
             st.error(str(exc))
     with st.expander('Tải bộ hồ sơ mẫu 10 khách hàng'):
         for sample in ('loans_10.xlsx','loans_10.csv','POL-LOAN-01_compact.docx','POL-LOAN-01_compact.txt','authorities_10.xlsx','authorities_10.csv'):
             st.download_button(sample,(ROOT/'demo'/sample).read_bytes(),sample,key='sample_'+sample)
-    with st.expander('Import file khác'):
+    with st.expander('Tiếp nhận tài liệu khác'):
 
         with st.form('upload'):
-            kind = st.selectbox('Loại nguồn', ['policies', 'loans', 'authorities'])
+            kind = st.selectbox('Loại tài liệu', ['policies', 'loans', 'authorities'], format_func=lambda x: readable.SOURCES[x])
             file = st.file_uploader('TXT / DOCX / PDF / CSV / XLSX', type=['txt', 'docx', 'pdf', 'csv', 'xlsx'])
             logical = st.text_input('Mã nguồn', 'POL-LOAN-01')
-            policy_set = st.text_input('Policy set', 'BASELINE')
-            effective = st.text_input('Ngày hiệu lực ISO 8601', '2026-10-08T00:00:00+07:00')
-            submit = st.form_submit_button('Import file')
+            policy_set = st.text_input('Bộ quy định áp dụng', 'BASELINE')
+            effective_date = st.date_input('Ngày hiệu lực của chính sách', value=date(2026, 10, 8), format='DD/MM/YYYY')
+            effective_time = st.time_input('Giờ bắt đầu hiệu lực theo giờ Việt Nam', value=time(0, 0))
+            effective = datetime.combine(effective_date, effective_time, tzinfo=ZoneInfo('Asia/Ho_Chi_Minh')).isoformat()
+            submit = st.form_submit_button('Tiếp nhận file')
         if submit and file and kind in ('loans', 'authorities'):
             st.error('Dữ liệu bảng tùy chỉnh phải qua màn hình Bảo vệ dữ liệu; import bản mã giả sau khi review.')
         if submit and file and kind == 'policies':
             fields = {'policy_id': logical, 'policy_set_id': policy_set, 'effective_from': effective} if kind == 'policies' else {('dataset_id' if kind == 'loans' else 'authority_id'): logical}
             try:
                 mutate('/import/' + kind, files={'file': (file.name, file.getvalue())}, data=fields)
-                st.session_state['notice'] = 'Đã import snapshot mới.'
+                st.session_state['notice'] = 'Đã tiếp nhận phiên bản tài liệu mới.'
                 st.rerun()
             except ApiError as exc:
                 st.error(str(exc))
@@ -344,26 +387,26 @@ elif page == 'Dữ liệu & Audit Run':
             chosen = {}
             for kind, field in [('policy', 'policy_snapshot_id'), ('loans', 'dataset_snapshot_id'), ('authority', 'authority_snapshot_id')]:
                 options = groups[kind]
-                item = st.selectbox(kind.title() + ' snapshot', range(len(options)), format_func=lambda i, options=options: f"{options[i]['filename']} · v{options[i]['version']} · {options[i]['snapshot_id'][:8]}")
+                item = st.selectbox(readable.SOURCES[kind] + ' sử dụng', range(len(options)), format_func=lambda i, options=options: f"{options[i]['filename']} · Phiên bản {options[i]['version']} · {readable.when(options[i].get('imported_at'))}")
                 chosen[field] = options[item]['snapshot_id']
-            submitted = st.form_submit_button('Tạo Audit Run')
+            submitted = st.form_submit_button('Tạo cuộc kiểm toán')
         if submitted:
             try:
                 result = mutate('/audit-runs', dict(chosen, audit_name=name))
                 st.session_state['active_run'] = result['run_id']
-                st.session_state['notice'] = 'Đã tạo Audit Run. Chuyển sang RCM để bắt đầu.'
+                st.session_state['notice'] = 'Đã tạo cuộc kiểm toán. Mở Ma trận rủi ro và kiểm soát để bắt đầu.'
                 st.rerun()
             except ApiError as exc:
                 st.error(str(exc))
     else:
-        st.info('Cần đủ policy, loans và authority trước khi tạo Audit Run.')
+        st.info('Cần đủ chính sách, hồ sơ khoản vay và bảng phân quyền trước khi tạo cuộc kiểm toán.')
     st.markdown('### Quản lý file đã import')
-    st.caption('Xóa được file chưa gắn vào cuộc kiểm toán. File đang sử dụng được giữ để bảo toàn bằng chứng. Xóa snapshot không xóa bản gốc mã hóa trong vault.')
-    st.dataframe(pd.DataFrame([{k:v for k,v in item.items() if k!='sha256'} for item in snaps]),hide_index=True,width='stretch')
+    st.caption('Xóa được file chưa gắn vào cuộc kiểm toán. File đang sử dụng được giữ để bảo toàn bằng chứng. Xóa phiên bản dữ liệu không xóa file gốc đã mã hóa trong kho bảo vệ.')
+    show_table(readable.snapshot_rows(snaps))
     unused=[item for item in snaps if not item.get('used_by_runs')]
     if unused:
-        target=st.selectbox('File cần xóa',unused,format_func=lambda x:f"{x['filename']} · v{x['version']} · {x['snapshot_id'][:8]}")
-        confirm=st.checkbox('Tôi xác nhận xóa snapshot này và các dòng dữ liệu đã import',key='confirm_delete_'+target['snapshot_id'])
+        target=st.selectbox('File cần xóa',unused,format_func=lambda x:f"{x['filename']} · Phiên bản {x['version']}")
+        confirm=st.checkbox('Tôi xác nhận xóa phiên bản file này và các dòng dữ liệu đã tiếp nhận',key='confirm_delete_'+target['snapshot_id'])
         if st.button('Xóa file đã import',disabled=not confirm,type='primary'):
             try:
                 with loading('Đang xóa file đã import…'):
@@ -378,7 +421,7 @@ elif page == 'Dữ liệu & Audit Run':
 
 else:
     if not rid:
-        st.info('Import dữ liệu và tạo Audit Run trước khi tiếp tục.')
+        st.info('Tiếp nhận hồ sơ và tạo cuộc kiểm toán trước khi tiếp tục.')
         st.stop()
     base = '/audit-runs/' + rid
     wf = api(base + '/workflow')
@@ -387,77 +430,87 @@ else:
         kind, route, rows = ('RCM', 'rcm', 'controls') if page == 'RCM' else ('PLAN', 'test-plan', 'tests')
         document = docs.get(kind)
         approved = bool(document and document['state'] == 'APPROVED')
-        st.subheader('2. LLM1 — RCM' if kind == 'RCM' else '3. LLM2 — Audit Test Plan')
+        st.subheader('Ma trận rủi ro và kiểm soát' if kind == 'RCM' else 'Kế hoạch kiểm tra kiểm toán')
         action('Tạo bản nháp bằng LLM', base + '/' + route + '/generate', disabled=approved)
         if kind == 'RCM':
-            with st.expander('Policy nguồn để đối chiếu'):
+            with st.expander('Chính sách nguồn để đối chiếu'):
                 st.text(api('/policies/' + wf['run']['policy_snapshot_id'] + '/text')['extracted_text'])
         if document:
-            st.write('Trạng thái: **' + document['state'] + '** · Model: ' + document['model'])
-            st.dataframe(pd.DataFrame(document['payload'].get(rows, [])), hide_index=True, width='stretch')
-            st.json(document['payload'])
+            st.write('Trạng thái: **' + readable.label(document['state']) + '** · Model đã dùng: ' + document['model'])
+            show_sections({'sections': readable.document_sections(document)})
             download(document, kind + '_' + rid + '.json', kind + '_download')
-            review_form('Con người duyệt ' + kind, base + '/' + route + '/approve', kind + '_approve', disabled=approved)
+            review_form('Auditor review ' + readable.KINDS[kind].lower(), base + '/' + route + '/approve', kind + '_approve', disabled=approved)
 
     elif page == 'Tests & Exceptions':
-        st.subheader('4. Python tests & Human review')
-        st.caption('Backend chỉ chạy sau khi RCM và Test Plan được duyệt, đúng baseline và authority đã được đối chiếu hash.')
+        st.subheader('Kết quả kiểm tra và ngoại lệ cần review')
+        st.caption('Các thủ tục chạy sau khi ma trận rủi ro, kế hoạch kiểm tra, chính sách và bảng phân quyền đã được duyệt đúng phiên bản.')
         action('Chạy T01–T03 bằng Python', base + '/tests/execute')
         results = api(base + '/results')['results']
         reviews = {x['result_id']: x['review_state'] for x in wf['result_reviews']}
         for result in results:
             result['human_review'] = reviews.get(result['result_id'], 'PENDING')
         if results:
-            st.dataframe(pd.DataFrame([{k: x.get(k) for k in ('row_id', 'test_id', 'test_result', 'reason_code', 'human_review')} for x in results]), hide_index=True, width='stretch')
+            show_table(readable.result_rows(results))
             download(results, 'results_' + rid + '.json', 'results_download')
             pending = [x for x in results if x['test_result'] == 'EXCEPTION' and x['human_review'] not in ('CONFIRMED', 'REJECTED')]
-            st.write(f'Exceptions còn chờ xử lý: **{len(pending)}**')
-            selected_result = st.selectbox('Chọn kết quả để đọc bằng chứng và review', range(len(results)), format_func=lambda i: f"{results[i]['row_id']} · {results[i]['test_id']} · {results[i]['test_result']} · {results[i]['human_review']}")
+            st.write(f'Ngoại lệ còn chờ xử lý: **{len(pending)}**')
+            selected_result = st.selectbox('Chọn kết quả để đọc bằng chứng và review', range(len(results)), format_func=lambda i: f"{results[i]['row_id']} · {results[i]['test_id']} · {readable.label(results[i]['test_result'])} · {readable.label(results[i]['human_review'])}")
             item = results[selected_result]
-            st.json(item)
+            show_evidence(item)
             review_form('Review kết quả đang chọn', base + '/results/' + item['result_id'] + '/review', 'result_' + item['result_id'], decision_key='review_state')
 
     elif page == 'Findings':
-        st.subheader('5. LLM3 — Draft findings')
-        st.caption('Cần xử lý từng exception trước khi tạo findings. Bản nháp phải gắn policy quote và evidence_result_ids hợp lệ.')
-        action('Tạo findings bằng LLM', base + '/findings/generate')
+        st.subheader('Phát hiện kiểm toán và bằng chứng')
+        st.caption('Auditor cần kết luận từng ngoại lệ trước khi soạn phát hiện. Mỗi phát hiện phải nêu căn cứ chính sách và liên kết tới bằng chứng đã kiểm tra.')
+        action('Soạn phát hiện kiểm toán bằng AI', base + '/findings/generate')
         document = docs.get('FINDINGS')
         if document:
             download(document, 'findings_' + rid + '.json', 'findings_download')
             states = {x['finding_key']: x['state'] for x in wf['finding_reviews']}
             for item in document['payload']['findings']:
-                with st.expander(item['finding_key'] + ' — ' + item['title'] + ' · ' + states.get(item['finding_key'], 'PENDING'), expanded=True):
+                with st.expander(item['finding_key'] + ' — ' + item['title'] + ' · ' + readable.label(states.get(item['finding_key'], 'PENDING')), expanded=True):
                     for key in ('criteria', 'condition', 'risk', 'recommendation'):
-                        st.markdown('**' + key.title() + '**')
+                        st.markdown('**' + {'criteria': 'Tiêu chí và căn cứ', 'condition': 'Thực trạng quan sát', 'risk': 'Rủi ro có thể phát sinh', 'recommendation': 'Kiến nghị'}[key] + '**')
                         st.write(item[key])
-                    st.json({'criteria_evidence': item['criteria_evidence'], 'evidence_details': item['evidence_details']})
-                    review_form('Review finding', '/findings/' + item['finding_key'] + '/review', 'finding_' + rid + '_' + item['finding_key'], extra={'run_id': rid}, decision_key='state')
+                    criteria = item['criteria_evidence']
+                    st.markdown('**Điều khoản chính sách làm căn cứ**')
+                    st.write('Điều khoản: ' + str(criteria.get('clause', 'Chưa ghi nhận')))
+                    st.write(criteria.get('source_quote', ''))
+                    for evidence in item['evidence_details']:
+                        st.markdown('**Bằng chứng hồ sơ ' + str(evidence.get('row_id', '')) + '**')
+                        show_evidence(evidence)
+                    review_form('Auditor review phát hiện này', '/findings/' + item['finding_key'] + '/review', 'finding_' + rid + '_' + item['finding_key'], extra={'run_id': rid}, decision_key='state')
 
     elif page == 'Report':
-        st.subheader('6. LLM4 — Báo cáo kiểm toán DRAFT')
-        action('Tạo báo cáo từ findings đã xác nhận', base + '/report/generate', disabled=docs.get('REPORT', {}).get('state') == 'APPROVED')
+        st.subheader('Báo cáo kiểm toán chờ review')
+        action('Soạn báo cáo từ các phát hiện đã xác nhận', base + '/report/generate', disabled=docs.get('REPORT', {}).get('state') == 'APPROVED')
         document = docs.get('REPORT')
         if document:
-            st.write('Trạng thái review: **' + document['state'] + '** · Phát hành: **DRAFT**')
+            st.write('Trạng thái review: **' + readable.label(document['state']) + '** · Phát hành: **Bản nháp**')
             for key in ('executive_summary', 'scope', 'methods', 'findings_summary', 'limitations', 'recommendations'):
-                st.markdown('### ' + key.replace('_', ' ').title())
+                st.markdown('### ' + {'executive_summary': 'Tóm tắt điều hành', 'scope': 'Phạm vi kiểm toán', 'methods': 'Phương pháp thực hiện', 'findings_summary': 'Tổng hợp phát hiện', 'limitations': 'Giới hạn của cuộc kiểm toán', 'recommendations': 'Kiến nghị'}[key])
                 st.write(document['payload'][key])
-            with st.expander('Counts và phụ lục bằng chứng'):
-                st.json(document['payload'])
+            with st.expander('Số liệu tổng hợp và danh mục bằng chứng'):
+                show_table([{'Kết quả': readable.label(k), 'Số lượt kiểm tra': v} for k, v in document['payload'].get('deterministic_counts', {}).items()])
+                for finding in document['payload'].get('evidence_appendix', []):
+                    st.write(str(finding.get('finding_key', '')) + ' · ' + str(finding.get('title', '')))
+                    for evidence in finding.get('evidence_details', []): show_evidence(evidence)
             download(document, 'report_DRAFT_' + rid + '.json', 'report_download')
             review_form('Con người review báo cáo', base + '/report/approve', 'report_approve', disabled=document['state'] == 'APPROVED')
             st.caption('Demo chưa có xác thực/phân quyền người duyệt, nên báo cáo vẫn DRAFT và backend chặn phát hành FINAL.')
 
     elif page == 'Evaluation':
-        st.subheader('7. Evaluation & audit trail')
+        st.subheader('Báo cáo đánh giá cuộc kiểm toán')
         evaluation = api(base + '/evaluation')
-        st.json(evaluation['structural_metrics'])
-        st.caption('Chỉ số cấu trúc không chứng minh độ chính xác nghiệp vụ hoặc semantic groundedness của LLM.')
-        with st.expander('Rule regression benchmark', expanded=True):
-            st.json(evaluation['regression_benchmark'])
-        st.markdown('**Lời gọi LLM thực tế**')
-        st.dataframe(pd.DataFrame(evaluation['llm_calls']), hide_index=True, width='stretch')
-        st.markdown('**Audit trail**')
         events = api(base + '/events')
-        st.dataframe(pd.DataFrame(events), hide_index=True, width='stretch')
-        download({'evaluation': evaluation, 'events': events}, 'evaluation_' + rid + '.json', 'eval_download')
+        results = api(base + '/results')['results']
+        all_sources = api('/snapshots')
+        source_ids = {wf['run'][k] for k in ('policy_snapshot_id', 'dataset_snapshot_id', 'authority_snapshot_id')}
+        sources = [x for x in all_sources if x['snapshot_id'] in source_ids]
+        report = readable.evaluation_report(evaluation, wf, events, results, sources)
+        st.caption('NEXUS · Hồ sơ đánh giá · Bản nháp cần auditor review')
+        show_table([{'Thông tin báo cáo': k, 'Nội dung': v} for k, v in report['metadata']])
+        st.download_button('Tải báo cáo đánh giá Word', readable.word_bytes(report),
+                           'NEXUS_Bao_cao_danh_gia_' + rid[:8] + '.docx',
+                           'application/vnd.openxmlformats-officedocument.wordprocessingml.document', key='eval_word_download')
+        show_sections(report)

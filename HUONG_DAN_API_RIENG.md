@@ -1,4 +1,4 @@
-# API Gemini riêng và tên reviewer tùy chọn — NEXUS 2.4
+# API Gemini riêng và tên reviewer tùy chọn — NEXUS 2.5
 
 ## API key riêng
 
@@ -19,7 +19,7 @@ Hạn mức Gemini tính theo Google project. Key mới trong cùng project khô
 
 ## Cập nhật GitHub
 
-Giải nén gói v2.4, upload toàn bộ nội dung thư mục bên trong lên gốc repo, ghi đè các file cùng tên và commit. Entry point vẫn là streamlit_app.py. Giữ Secrets đang dùng và reboot app. Kiểm tra dòng NEXUS 2.4 · STREAMLIT trên giao diện.
+Giải nén gói v2.5, upload toàn bộ nội dung thư mục bên trong lên gốc repo, ghi đè các file cùng tên và commit. Entry point vẫn là streamlit_app.py. Giữ Secrets đang dùng và reboot app. Kiểm tra dòng NEXUS 2.5 · STREAMLIT trên giao diện.
 
 ## Chọn hoặc tự nhập model AI
 
