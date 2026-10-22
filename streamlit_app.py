@@ -28,6 +28,7 @@ from streamlit_runtime import initialize, request as backend_request, ApiError
 from nexus_ui import shell, home, loading
 import nexus_reports as readable
 from nexus_review import render_review_queue
+from nexus_exports import table_xlsx, mapping_xlsx, XLSX_MIME
 REVIEWERS = ['Hoàng Minh Khuê', 'Đinh Nghiêm Khánh Lam', 'Phan Ngô Ngọc Lan', 'Bùi Lê Hồng Ngọc', 'Trương Thị Thanh Thảo', 'Trương Mỹ Uyên']
 
 
@@ -236,10 +237,10 @@ elif page == 'Bảo vệ dữ liệu':
     st.subheader('Bảo vệ dữ liệu trước khi phân tích')
     st.info('Bước 1: mã hóa file gốc để bảo vệ toàn bộ nội dung. Bước 2: chọn cách bảo vệ từng cột để tạo bản dữ liệu dùng cho kiểm toán. Bước 3: auditor review rồi tải file hoặc đưa vào cuộc kiểm toán.')
     st.caption('Thay bằng mã giả: thay tên hoặc thông tin nhận dạng bằng mã. Che giá trị: ẩn nội dung nhưng giữ cột. Giữ nguyên: giữ dữ liệu cần tính toán. Auditor cần kiểm tra lại mọi cột trước khi sử dụng.')
-    sample_path = ROOT / 'demo' / 'loans_10.csv'
+    sample_path = ROOT / 'demo' / 'loans_10.xlsx'
     if sample_path.is_file():
-        st.download_button('Tải CSV giả lập 10 khách hàng', sample_path.read_bytes(),
-                           'Nexus_Simulated_Loans_10.csv', 'text/csv', key='privacy_sample_download')
+        st.download_button('Tải Excel giả lập 10 khách hàng — từng chỉ tiêu một cột', sample_path.read_bytes(),
+                           'Nexus_Simulated_Loans_10.xlsx', XLSX_MIME, key='privacy_sample_download')
         st.caption('10 khách hàng hư cấu; mã giấy tờ ID-SIM, không phải CCCD thật.')
     if st.button('Xóa lựa chọn và kết quả trên màn hình', key='clear_private'):
         for item in ('private_job','private_reviewed'):
@@ -315,11 +316,27 @@ elif page == 'Bảo vệ dữ liệu':
                 if reviewed and reviewed['source_fingerprint'] == fingerprint:
                     st.caption('Nếu đổi phương án hoặc phạm vi, bấm Duyệt và xuất lại. Bản bên dưới là kết quả của lần duyệt đã lưu.')
                     st.dataframe(reviewed['frame'].head(20).rename(columns=readable.FIELDS), hide_index=True, width='stretch')
-                    st.download_button('1. Tải dữ liệu đã bảo vệ — đúng định dạng nguồn', reviewed['export_bytes'],
-                                       reviewed['export_filename'], reviewed['export_mime'], key='protected_csv_download')
+                    # The original XLSX has already passed the existing source-layout checks.
+                    # CSV gets a separate workbook so Excel does not need to guess its delimiter.
+                    if reviewed['export_filename'].lower().endswith('.xlsx'):
+                        excel_bytes = reviewed['export_bytes']
+                    else:
+                        if 'download_xlsx_bytes' not in reviewed:
+                            reviewed['download_xlsx_bytes'] = table_xlsx(reviewed['frame'])
+                        excel_bytes = reviewed['download_xlsx_bytes']
+                    st.download_button('1. Tải dữ liệu đã bảo vệ — Excel, mỗi chỉ tiêu một cột', excel_bytes,
+                                       str(Path(reviewed['export_filename']).with_suffix('.xlsx')), XLSX_MIME, key='protected_xlsx_download')
+                    if not reviewed['export_filename'].lower().endswith('.xlsx'):
+                        st.download_button('Tải thêm bản đúng định dạng nguồn (CSV)', reviewed['export_bytes'],
+                                           reviewed['export_filename'], reviewed['export_mime'], key='protected_csv_download')
+                    st.caption('Nên chọn Excel (.xlsx) để mở trực tiếp với từng cột riêng. Bản CSV giữ dấu phân cách của nguồn; khi mở CSV trong Excel, cần chọn đúng dấu phân cách.')
                     st.warning('Bảng đối chiếu chứa giá trị gốc và mã tương ứng. Auditor cần lưu riêng ở nơi có quyền truy cập phù hợp; không đưa bảng này vào cuộc kiểm toán hoặc gửi cho AI. Biên bản Word bên dưới ghi nhận phương án và người review, không chứa giá trị gốc từng ô.')
-                    st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor', readable.readable_mapping(reviewed['audit_mapping_csv_bytes']),
-                                       'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.csv', 'text/csv', key='auditor_mapping_download')
+                    if 'download_mapping_xlsx_bytes' not in reviewed:
+                        reviewed['download_mapping_xlsx_bytes'] = mapping_xlsx(reviewed['audit_mapping_csv_bytes'])
+                    st.download_button('2. Tải bảng đối chiếu chi tiết cho auditor — Excel', reviewed['download_mapping_xlsx_bytes'],
+                                       'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.xlsx', XLSX_MIME, key='auditor_mapping_download')
+                    st.download_button('Tải thêm bảng đối chiếu CSV', readable.readable_mapping(reviewed['audit_mapping_csv_bytes']),
+                                       'AUDITOR_ONLY_mapping_' + protected['file_id'] + '.csv', 'text/csv', key='auditor_mapping_csv_download')
                     st.download_button('3. Tải biên bản bảo vệ dữ liệu Word', readable.word_bytes(readable.privacy_report(reviewed)),
                                        'NEXUS_Bien_ban_bao_ve_' + protected['file_id'] + '.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', key='auditor_review_download')
                     st.caption('Bảng đối chiếu chỉ được giữ tạm trong RAM của phiên để phục vụ tải; tải và lưu riêng trước khi đóng/reboot app.')

@@ -1,0 +1,19 @@
+NEXUS 2.7 — xuất Excel riêng từng cột
+
+Lệnh: python -m pytest backend/tests -q
+Kết quả: 129 passed; 1 cảnh báo deprecation của FastAPI/Starlette TestClient.
+Môi trường: Python 3.12, Streamlit 1.65.0, pandas 2.3.3.
+
+Bổ sung 5 tình huống kiểm tra xuất Excel:
+- Nguồn CSV phân cách bằng dấu phẩy, chấm phẩy, tab đều thành từng ô riêng.
+- Giữ thứ tự cột và số dòng, tiếng Việt, dấu phẩy trong giá trị và xuống dòng trong ô.
+- Giữ số 0 đầu, mã dài và số tiền; đọc lại XLSX cho cùng bảng dữ liệu nguồn.
+- Chuỗi giống công thức được lưu dạng dữ liệu văn bản; số nguyên nguồn vẫn là số.
+- Bảng đối chiếu có từng cột tiếng Việt, giữ giá trị gốc và giá trị đã bảo vệ.
+
+Kiểm tra khởi động streamlit_app.py bằng AppTest: PASS, thấy NEXUS 2.7.
+Không gọi Gemini thật, không kiểm thử chất lượng AI hoặc triển khai Cloud.
+
+Giữ chức năng bộ lọc/chọn tất cả và review nhanh của bản 2.6.
+Không sửa backend nghiệp vụ, quy tắc, dữ liệu demo, hash tài liệu hoặc Secrets.
+Bản Excel bổ sung dùng bộ xuất trong runtime Python; không thêm thư viện ngoài requirements hiện có.

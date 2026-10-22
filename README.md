@@ -1,4 +1,6 @@
-# NEXUS 2.6 dành cho Streamlit
+# NEXUS 2.7 dành cho Streamlit
+
+Bản 2.7 thêm tải Excel cho dữ liệu đã bảo vệ và bảng đối chiếu auditor: mỗi chỉ tiêu một cột, mỗi hồ sơ một dòng. Xem [HUONG_DAN_EXCEL_V2_7.md](HUONG_DAN_EXCEL_V2_7.md). Chức năng lọc và review nhanh của bản 2.6 vẫn được giữ.
 
 Bản 2.6 bổ sung lọc loại kết quả, trạng thái review và thủ tục; chọn tất cả trong bộ lọc; danh sách đọc bằng chứng với nút trước/tiếp theo. Đếm riêng ngoại lệ và trường hợp thiếu thông tin còn chờ xử lý. Xem [HUONG_DAN_REVIEW_NHANH_V2_6.md](HUONG_DAN_REVIEW_NHANH_V2_6.md).
 

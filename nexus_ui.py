@@ -67,7 +67,7 @@ def shell():
     st.sidebar.markdown('### Không gian kiểm toán')
     names={'Dữ liệu & Audit Run':'Cuộc kiểm toán', 'RCM':'Ma trận rủi ro và kiểm soát', 'Test Plan':'Kế hoạch kiểm tra', 'Tests & Exceptions':'Kiểm tra và ngoại lệ', 'Findings':'Phát hiện kiểm toán', 'Report':'Báo cáo kiểm toán', 'Evaluation':'Đánh giá và hồ sơ'}
     page=st.sidebar.radio('Menu tác vụ', PAGES,key='nx_page',format_func=lambda x:names.get(x,x))
-    st.caption('NEXUS 2.6 · STREAMLIT')
+    st.caption('NEXUS 2.7 · STREAMLIT')
     cols=st.columns(4)
     for col,title,target in zip(cols,['Trang chủ','Bảo vệ dữ liệu','Cuộc kiểm toán','Báo cáo'],['Trang chủ','Bảo vệ dữ liệu','Dữ liệu & Audit Run','Report']):
         col.button(title,key='nav_'+target,on_click=navigate,args=(target,),use_container_width=True)
