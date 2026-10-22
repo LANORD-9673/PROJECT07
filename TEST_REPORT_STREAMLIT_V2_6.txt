@@ -1,0 +1,28 @@
+NEXUS Streamlit 2.6 — kiểm tra cập nhật review nhanh
+
+Môi trường: Python 3.12, Streamlit 1.65.0.
+Lệnh: python -m pytest backend/tests -q
+Kết quả: 124 passed; 1 cảnh báo deprecation từ FastAPI/Starlette TestClient.
+
+Kiểm tra giao diện bằng Streamlit AppTest:
+- Mặc định lọc Ngoại lệ/Chưa đủ thông tin đang Chờ review.
+- Chọn tất cả trong bộ lọc không sửa quyết định review.
+- Chuyển kết quả trước/tiếp theo; đọc đúng kết quả đang chọn.
+- Sau khi lưu đánh giá thử trong harness, bộ đếm và danh sách cập nhật.
+- Đổi bộ lọc loại bỏ lựa chọn không còn phù hợp; bộ lọc rỗng không hiển thị kết quả.
+- Bỏ chọn tất cả; lọc Cần làm rõ thêm; không lẫn danh sách giữa hai Audit Run.
+
+Smoke test ứng dụng streamlit_app.py bằng AppTest:
+Khởi tạo cơ sở dữ liệu tạm, mở trang chủ không có exception,
+hiển thị dấu phiên bản NEXUS 2.6. Không gọi mô hình thật.
+
+So sánh gói nguồn:
+Chỉ sửa streamlit_app.py, nexus_ui.py, README.md,
+HUONG_DAN_CAP_NHAT_STREAMLIT.md; thêm nexus_review.py,
+backend/tests/test_review_queue.py và hướng dẫn/test report 2.6.
+Không sửa backend nghiệp vụ, quy tắc, hợp đồng API, policy,
+file dữ liệu demo, khóa hoặc cấu hình bí mật.
+
+Giới hạn: kiểm thử phần mềm không chứng minh độ chính xác của LLM,
+không đánh giá tải đồng thời hoặc môi trường Cloud thật.
+Chưa thực hiện triển khai lên GitHub/Streamlit của chủ ứng dụng.

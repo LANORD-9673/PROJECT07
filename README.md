@@ -1,4 +1,6 @@
-# NEXUS 2.5 dành cho Streamlit
+# NEXUS 2.6 dành cho Streamlit
+
+Bản 2.6 bổ sung lọc loại kết quả, trạng thái review và thủ tục; chọn tất cả trong bộ lọc; danh sách đọc bằng chứng với nút trước/tiếp theo. Đếm riêng ngoại lệ và trường hợp thiếu thông tin còn chờ xử lý. Xem [HUONG_DAN_REVIEW_NHANH_V2_6.md](HUONG_DAN_REVIEW_NHANH_V2_6.md).
 
 Chạy ứng dụng bằng **streamlit_app.py** ở gốc repo. Gói này không cần React, Node.js hoặc dịch vụ FastAPI riêng.
 

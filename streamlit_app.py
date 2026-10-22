@@ -27,6 +27,7 @@ os.environ['PROJECT07_REQUIRE_GATES'] = '1'
 from streamlit_runtime import initialize, request as backend_request, ApiError
 from nexus_ui import shell, home, loading
 import nexus_reports as readable
+from nexus_review import render_review_queue
 REVIEWERS = ['Hoàng Minh Khuê', 'Đinh Nghiêm Khánh Lam', 'Phan Ngô Ngọc Lan', 'Bùi Lê Hồng Ngọc', 'Trương Thị Thanh Thảo', 'Trương Mỹ Uyên']
 
 
@@ -450,14 +451,15 @@ else:
         for result in results:
             result['human_review'] = reviews.get(result['result_id'], 'PENDING')
         if results:
-            show_table(readable.result_rows(results))
             download(results, 'results_' + rid + '.json', 'results_download')
-            pending = [x for x in results if x['test_result'] == 'EXCEPTION' and x['human_review'] not in ('CONFIRMED', 'REJECTED')]
-            st.write(f'Ngoại lệ còn chờ xử lý: **{len(pending)}**')
-            selected_result = st.selectbox('Chọn kết quả để đọc bằng chứng và review', range(len(results)), format_func=lambda i: f"{results[i]['row_id']} · {results[i]['test_id']} · {readable.label(results[i]['test_result'])} · {readable.label(results[i]['human_review'])}")
-            item = results[selected_result]
-            show_evidence(item)
-            review_form('Review kết quả đang chọn', base + '/results/' + item['result_id'] + '/review', 'result_' + item['result_id'], decision_key='review_state')
+            st.caption('Tệp tải xuống chứa toàn bộ kết quả. Bảng bên dưới thay đổi theo bộ lọc.')
+            item = render_review_queue(results, rid)
+            if item is not None:
+                show_evidence(item)
+                review_form('Review kết quả đang chọn', base + '/results/' + item['result_id'] + '/review',
+                            'result_' + item['result_id'], decision_key='review_state')
+        else:
+            st.info('Chưa có kết quả. Hãy chạy T01–T03 sau khi hoàn tất các bước duyệt căn cứ và kế hoạch.')
 
     elif page == 'Findings':
         st.subheader('Phát hiện kiểm toán và bằng chứng')
