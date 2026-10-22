@@ -28,6 +28,7 @@ from streamlit_runtime import initialize, request as backend_request, ApiError
 from nexus_ui import shell, home, loading
 import nexus_reports as readable
 from nexus_review import render_review_queue
+from nexus_evidence import show_evidence_view
 from nexus_exports import table_xlsx, mapping_xlsx, XLSX_MIME
 REVIEWERS = ['Hoàng Minh Khuê', 'Đinh Nghiêm Khánh Lam', 'Phan Ngô Ngọc Lan', 'Bùi Lê Hồng Ngọc', 'Trương Thị Thanh Thảo', 'Trương Mỹ Uyên']
 
@@ -89,6 +90,7 @@ def show_evidence(item):
         show_table([{'Trường được đối chiếu': readable.field(k), 'Giá trị quan sát': readable.plain(v)} for k, v in observed.items()])
     if item.get('result_id'):
         st.caption('Mã kết quả để truy vết: ' + item['result_id'])
+        show_evidence_view(item, api)
 
 
 def show_sections(report):

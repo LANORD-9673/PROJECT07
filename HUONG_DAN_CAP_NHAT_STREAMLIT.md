@@ -4,7 +4,7 @@
 
 Tải một bản sao repo trước khi thay. Giữ riêng Secrets đang dùng, khóa vault và dữ liệu cần lưu; không đưa các giá trị này lên GitHub.
 
-Giải nén Project07_NEXUS_Streamlit_v2.7_FULL.zip. Upload nội dung bên trong thư mục Project07_NEXUS_Streamlit_v2.7 vào gốc repo LANORD-9673/PROJECT07_AI-Internal-Audit-Platform. Không upload nguyên ZIP và không thêm tầng thư mục ngoài.
+Giải nén Project07_NEXUS_Streamlit_v2.8_FULL.zip. Upload nội dung bên trong thư mục Project07_NEXUS_Streamlit_v2.8 vào gốc repo LANORD-9673/PROJECT07_AI-Internal-Audit-Platform. Không upload nguyên ZIP và không thêm tầng thư mục ngoài.
 
 Gốc repo cần có:
 
@@ -15,6 +15,7 @@ nexus_ui.py
 nexus_review.py
 nexus_reports.py
 nexus_exports.py
+nexus_evidence.py
 main.py
 requirements.txt
 .streamlit/config.toml
@@ -34,7 +35,7 @@ Trên GitHub: Add file → Upload files → kéo nội dung gói → Commit chan
 
 Trong Streamlit Community Cloud, kiểm tra ứng dụng đang theo dõi đúng repo và nhánh vừa commit. File khởi chạy cần là **streamlit_app.py** ở gốc repo. Gói cũng có main.py ở gốc làm alias tương thích nếu ứng dụng trước đây chọn main.py. Không cần tạo link React hoặc Render.
 
-Giữ Secrets cũ trong phần quản lý app. Reboot sau khi commit và cập nhật cấu hình. Nếu bản cũ vẫn hiện, kiểm tra log: đúng repo, branch, entrypoint và commit mới chưa. Trang mới hiện dòng **NEXUS 2.7 · STREAMLIT** phía dưới logo. Không chỉ dựa vào việc reboot để biết đã chạy bản mới.
+Giữ Secrets cũ trong phần quản lý app. Reboot sau khi commit và cập nhật cấu hình. Nếu bản cũ vẫn hiện, kiểm tra log: đúng repo, branch, entrypoint và commit mới chưa. Trang mới hiện dòng **NEXUS 2.8 · STREAMLIT** phía dưới logo. Không chỉ dựa vào việc reboot để biết đã chạy bản mới.
 
 ## 3. Cấu hình bộ demo mới
 
@@ -72,6 +73,6 @@ Chưa có đăng nhập/phân quyền; tên reviewer là lựa chọn tự khai,
 
 Xem HUONG_DAN_REVIEW_NHANH_V2_6.md để lọc ngoại lệ/thiếu thông tin theo trạng thái, chọn tất cả và đọc bằng chứng lần lượt. Chọn tất cả không tự xác nhận các kết quả.
 
-## Xuất Excel trong bản 2.7
+## Xuất Excel trong bản 2.8
 
 Xem HUONG_DAN_EXCEL_V2_7.md. Chọn bản Excel cho dữ liệu đã bảo vệ và bảng đối chiếu auditor để mỗi chỉ tiêu nằm trong cột riêng khi mở bằng Excel.

@@ -1,4 +1,6 @@
-# NEXUS 2.7 dành cho Streamlit
+# NEXUS 2.8 dành cho Streamlit
+
+Bản 2.8 thêm nút **Xem dòng bằng chứng** ở phần review T01–T03: đọc trực tiếp giá trị hồ sơ và các dòng phân quyền được liên kết, đúng phiên bản đã kiểm tra. Xem [HUONG_DAN_BANG_CHUNG_V2_8.md](HUONG_DAN_BANG_CHUNG_V2_8.md). Không cần gọi LLM để mở bằng chứng.
 
 Bản 2.7 thêm tải Excel cho dữ liệu đã bảo vệ và bảng đối chiếu auditor: mỗi chỉ tiêu một cột, mỗi hồ sơ một dòng. Xem [HUONG_DAN_EXCEL_V2_7.md](HUONG_DAN_EXCEL_V2_7.md). Chức năng lọc và review nhanh của bản 2.6 vẫn được giữ.
 

@@ -78,3 +78,40 @@ def results(request:Request,run_id:str):
         if run is None: error('NOT_FOUND','Audit run not found',404)
         values=[json.loads(r[0]) for r in con.execute('SELECT result_json FROM rule_results WHERE run_id=? ORDER BY source_line,test_id',(run_id,))]
     return envelope(request,{'count':len(values),'results':values},run_id,json.loads(run[0]))
+
+
+@router.get('/api/audit-runs/{run_id}/results/{result_id}/evidence')
+def result_evidence(request:Request,run_id:str,result_id:str):
+    """Read only the rows referenced by this result, from its pinned snapshots."""
+    with connect() as con:
+        run=con.execute('SELECT * FROM audit_runs WHERE run_id=?',(run_id,)).fetchone()
+        result=con.execute('SELECT result_json FROM rule_results WHERE run_id=? AND result_id=?',
+                           (run_id,result_id)).fetchone()
+        if run is None or result is None:
+            error('NOT_FOUND','Audit result not found in this run',404)
+        item=json.loads(result[0])
+        rows=[]
+        for ref in item.get('evidence_refs',[]):
+            source=ref.get('source')
+            if source not in ('loans','authority'):
+                error('EVIDENCE_MISMATCH','Unsupported evidence source')
+            snapshot_id=run['dataset_snapshot_id'] if source=='loans' else run['authority_snapshot_id']
+            if ref.get('snapshot_id')!=snapshot_id or ref.get('run_id')!=run_id:
+                error('EVIDENCE_MISMATCH','Evidence does not belong to the pinned run snapshot')
+            if source=='loans':
+                row=con.execute('SELECT payload_json FROM loan_rows WHERE snapshot_id=? AND row_id=? AND source_line=?',
+                                (snapshot_id,ref.get('row_id'),ref.get('source_line'))).fetchone()
+            else:
+                row=con.execute('SELECT payload_json FROM authority_rows WHERE snapshot_id=? AND source_line=?',
+                                (snapshot_id,ref.get('source_line'))).fetchone()
+            snapshot=con.execute('SELECT filename,version,sha256 FROM snapshots WHERE snapshot_id=? AND source_type=?',
+                                 (snapshot_id,source)).fetchone()
+            if row is None or snapshot is None:
+                error('MISSING_EVIDENCE','Referenced evidence row is unavailable',404)
+            fields=ref.get('fields') or ['employee_id','role','branch_id','authority_limit_vnd','valid_from','valid_to']
+            rows.append(dict(source=source,source_line=ref['source_line'],row_id=ref.get('row_id'),
+                             evidence_id=ref.get('evidence_id'),snapshot_id=snapshot_id,
+                             filename=snapshot['filename'],version=snapshot['version'],sha256=snapshot['sha256'],
+                             fields=fields,values=json.loads(row[0])))
+    return envelope(request,{'result_id':result_id,'test_id':item['test_id'],'row_id':item['row_id'],
+                             'rows':rows},run_id,json.loads(run['source_versions_json']))

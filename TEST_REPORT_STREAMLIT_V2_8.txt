@@ -1,0 +1,17 @@
+NEXUS 2.8 — Evidence row viewer
+Date: 2026-10-22
+Command: python -m pytest backend/tests -q
+Result: 135 passed in 9.51s (including 6 new evidence/API/widget tests).
+One dependency deprecation warning from Starlette/httpx test client; no test failures.
+
+Verified:
+- T01/T02/T03 evidence rows resolve to the run's pinned snapshots.
+- T02 includes linked authority rows and source metadata.
+- Later imports do not replace the evidence of an earlier run.
+- Wrong run/result and mismatched snapshot references are rejected.
+- Missing values remain blank; no authority evidence is fabricated.
+- Opening/hiding rows does not change test results or review states.
+- Streamlit opens on demand, preserves pseudonymous IDs and leading zeros,
+  displays zero separately from a missing value, and isolates each result's view.
+No live Gemini call is used by this viewer or these new feature tests.
+Validation is local; deployment on the user's Streamlit app has not been performed.
